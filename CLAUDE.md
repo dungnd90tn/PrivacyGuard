@@ -59,7 +59,7 @@ Dirty `graphify-out/` files are expected and are never a reason to bypass graph-
 
 PrivacyGuard is an early-stage, privacy-focused Android app (network filtering, per-app rules, tracking-link cleaning, a private browser, and a dashboard) plus a standalone web prototype used to validate the UX and rule-evaluation logic before the native implementation exists.
 
-- `app/` is the real product target: a native Android app in Kotlin. Today it contains only the deterministic core (packet/DNS parsing, rule evaluation, link cleaning) — no VPN, browser, or UI is implemented yet.
+- `app/` is the real product target: a native Android MVP in Kotlin, with a DNS-only split-route VPN, rules editor, local dashboard/history, link cleaner, and a separate-process WebView session. See `README.md` and `docs/mvp.html` for build instructions, scope, and verification limits.
 - `prototype-web/` is a separate, fully working local web app (vanilla JS + a tiny Node static server, no dependencies) that mirrors the same rule semantics so the UX and rules can be explored without the native app. It explicitly does **not** block real network traffic — see its README's Scope section.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the authoritative design: proposed modules, decision flow, rule precedence, privacy/accuracy requirements, and delivery sequence. Full detail in the Architecture section below.
@@ -95,7 +95,7 @@ There is no `docs/` folder, no ADRs, and no additional services or ports beyond 
 
 ### Android app (`app/`)
 
-No Gradle wrapper is committed (`./gradlew` does not exist yet) and there is no system-wide `gradle` on this machine — generate the wrapper first (`gradle wrapper` from an environment that has Gradle, or open the project in Android Studio, which generates it automatically) before any of these will run:
+The Gradle Wrapper is present and pinned to Gradle 8.11.1 with its distribution SHA-256. Use JDK 17 and Android SDK 35 (`ANDROID_HOME` or `local.properties`) before running these commands:
 
 ```bash
 # Build the debug APK
@@ -104,13 +104,14 @@ No Gradle wrapper is committed (`./gradlew` does not exist yet) and there is no 
 # Run Android Lint — already configured to fail on any finding (lint { abortOnError = true } in app/build.gradle.kts)
 ./gradlew :app:lint
 
-# Run unit tests — JUnit 4.13.2 is wired via testImplementation, but app/src/test/ does not exist yet;
-# core/Packets.kt and core/Rules.kt are plain Kotlin with no Android dependency and are the natural
-# first targets once that source set is created. There is no app/src/androidTest/ yet either.
-./gradlew :app:test
+# Run JVM unit tests (rules, packets, DNS/TCP, and JSON policy recovery)
+./gradlew :app:testDebugUnitTest
+
+# Build the dependency-free Android instrumentation test APK; see README before running on an emulator
+./gradlew :app:assembleDebugAndroidTest
 ```
 
-Key facts from the build files: Android Gradle Plugin 8.9.2, Kotlin 2.1.20, `compileSdk`/`targetSdk` 35, `minSdk` 29, Java 17 toolchain (`app/build.gradle.kts`). `gradle.properties` sets `android.useAndroidX=false` — this project currently has zero AndroidX (or any) dependencies; check that flag before assuming an AndroidX API is available.
+Key facts from the build files: Android Gradle Plugin 8.9.2, Kotlin 2.1.20, `compileSdk`/`targetSdk` 35, `minSdk` 29, Java 17 toolchain (`app/build.gradle.kts`). `gradle.properties` sets `android.useAndroidX=true` — AndroidX is present only through Robolectric test dependencies; there are no AndroidX runtime libraries, so check the scope before using an AndroidX API.
 
 ### Web prototype (`prototype-web/`)
 
@@ -128,14 +129,14 @@ npm test           # runs prototype-web/test/lib.test.js via Node's built-in nod
 
 | Path | What it is | Status |
 |---|---|---|
-| `app/` | The real product: a native Android app (Kotlin) | Early scaffold — core rule/packet logic only, no UI or services implemented |
+| `app/` | The real product: a native Android app (Kotlin) | MVP implemented; device verification remains required (see `docs/mvp.html`) |
 | `prototype-web/` | A local-first web app (vanilla JS + a tiny Node static server) | Fully working UI/UX + rule-logic demo; explicitly not the shipped product |
 
 They implement the **same rule semantics independently** — Kotlin in `app/src/main/java/com/privacyguard/android/core/Rules.kt` vs. JavaScript in `prototype-web/lib.js`. There is no shared source between them: a change to rule precedence, domain matching, or link-cleaning behavior in one does not update the other. `ARCHITECTURE.md` is the authoritative semantics both must follow — check it, and keep both in sync by hand.
 
 ### `app/` — Android module (`com.privacyguard.android`)
 
-`AndroidManifest.xml` (`app/src/main/AndroidManifest.xml`) already declares three components whose Kotlin implementations **do not exist yet**:
+`AndroidManifest.xml` (`app/src/main/AndroidManifest.xml`) declares three implemented components:
 - `.MainActivity` — launcher activity; also handles `ACTION_SEND` for `text/plain` (share-to-clean-link entry point)
 - `.PrivateBrowserActivity` — runs in its own process (`:private_browser`), excluded from recents, not exported
 - `.DnsVpnService` — a `VpnService` (`BIND_VPN_SERVICE`, foreground service type `specialUse`, `SUPPORTS_ALWAYS_ON=false`)
@@ -144,7 +145,11 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 - **`Packets.kt`** — dependency-free IPv4/IPv6 header validation, UDP parsing + checksum (RFC 1071), DNS question parsing, DNS error/reply construction, and response validation (ID + echoed-question matching). This is the packet layer `DnsVpnService` will eventually call into; no Android dependencies, so it's unit-testable in isolation.
 - **`Rules.kt`** — the rule-evaluation core: `Category`/`Action`/`DomainRule`/`Decision`/`Policy` data types, `Rules.decide()` (tracker classification → per-app/global domain exception → per-app/global category policy → default allow, per `ARCHITECTURE.md`'s rule precedence), domain normalization (`IDN` + label/length validation, exact-vs-wildcard + longest-suffix precedence), and a separate `LinkCleaner` object stripping `utm_*`/`fbclid`/`gclid`/custom query keys while preserving unrelated query parts and the fragment.
 
-`app/src/main/res/` has only a launcher icon (`drawable/ic_shield.xml`) and a base theme (`values/styles.xml`) — no layouts yet.
+`app/src/main/res/` has a launcher icon, base theme, strings, and backup exclusions. Native layouts are constructed programmatically with `Ui.kt`; no AndroidX runtime is used. Version 0.3 adds persisted DNS profiles (`DnsSettingsCodec.kt`, `core/DnsServers.kt`) and protected UDP/TCP forwarding (`core/DnsForwarder.kt`), with plain-language request details (`RequestText.kt`). See `docs/dns-requests.html`. Version 0.2 uses blue light/dark palettes and persistent bottom tabs; `Traffic.kt` filters the complete retained history and separates All/Unknown/package scopes. See `docs/mobile-redesign.html` for native render evidence and tests. Policies/counters are stored by `GuardStore.kt`, and platform-independent DNS/TCP processing lives in `core/DnsFilter.kt` and `core/TcpDns.kt`.
+
+Native version 0.4 adds optional authenticated DNS-over-TLS on upstream port 853, with VPN DNS input still on UDP/TCP 53. `core/UrlAnalysis.kt` makes display-only URL/query inferences; `RequestSession` is an opt-in, bounded process-memory journal for the private browser. Never persist URL/path/query values to DNS events, preferences or exports; never use query inferences as blocking policy. See `docs/query-dns-tls.html` for evidence and limits. Test TLS certificates live in test resources only; production uses platform trust roots.
+
+Version 0.4.1 binds TCP/TLS sockets before `VpnService.protect` to allocate Android's lazily created native descriptor. Do not move protect ahead of descriptor creation or after connect. `core/DnsDiagnostics.kt` preserves per-attempt failure kind/stage; `DnsFailureCodec.kt` stores bounded metadata in the existing reason column only with detailed logging. Never persist raw exception messages or packet contents. Legacy reasons remain readable. Native UI controls use explicit spacing and flat custom button backgrounds; see `docs/dns-error-ui.html` for validation.
 
 ### `prototype-web/` — web prototype (Node ≥ 20, zero dependencies)
 
@@ -166,12 +171,12 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 - **Validation via `require()`:** invalid input throws `IllegalArgumentException` with a user-facing message (`Rules.normalize`, `LinkCleaner.clean`) — except the packet-parsing path (`Packets.parseUdp`, `Packets.question`), which returns `null` on malformed input instead of throwing, since malformed network data is expected, not exceptional.
 - **User-facing strings are Vietnamese, written directly in code** (`Category.label`, `require()` messages in `Rules.kt`) — there is no localization/resource layer yet. Identifiers and comments stay in English.
 - **Android Lint gates the build:** `lint { abortOnError = true }` in `app/build.gradle.kts` — a new lint finding fails `:app:lint` (and anything depending on it); it is not an optional warning.
-- **`android.useAndroidX=false`** — currently true because there are zero AndroidX (or any) dependencies; re-check before assuming an AndroidX API is available.
+- **`android.useAndroidX=true`** — required by Robolectric 4.17 test-only AndroidX dependencies. There are still no AndroidX runtime dependencies; do not assume AndroidX UI APIs are available.
 - **`prototype-web/` JS:** plain ES modules, no build step, no external dependencies — keep it that way per its README ("No dependencies, accounts, API keys, or build step are required").
 
 ## Testing Stack
 
-- **Android (`app/`):** JUnit 4.13.2 is wired as `testImplementation` in `app/build.gradle.kts`, but no `app/src/test/` (or `app/src/androidTest/`) source set exists yet. `core/Packets.kt` and `core/Rules.kt` are plain Kotlin with no Android dependency and are the natural first targets once that source set is created.
+- **Android (`app/`):** `app/src/test/` contains JUnit tests for rules, packets, DNS/TCP and policy JSON recovery (`org.json` is a test-only dependency). `app/src/androidTest/` contains `MvpInstrumentation`, using the platform Instrumentation API to verify storage, UI and real DNS through TUN on a test emulator. See `README.md` for setup and `docs/mvp.html` for execution status.
 - **Web prototype (`prototype-web/`):** Node's built-in `node:test` runner (`npm test`, requires Node ≥ 20), no external test framework. `test/lib.test.js` covers domain-matching boundaries, policy precedence, per-app rule isolation, URL/query preservation, sample-event generation, and `localStorage` failure recovery — run it whenever `lib.js` changes, and mirror any rule-semantics change into `app/.../core/Rules.kt` (see Architecture) since the two are not shared code.
 
 ## Key Infrastructure Files
@@ -179,7 +184,7 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 - `settings.gradle.kts` — root Gradle project name (`PrivacyGuard`) and the single included module (`:app`)
 - `build.gradle.kts` (root) — plugin versions: Android Gradle Plugin 8.9.2, Kotlin 2.1.20 (`apply false`, applied per-module)
 - `app/build.gradle.kts` — the Android module: namespace/applicationId `com.privacyguard.android`, SDK versions, Java 17 toolchain, lint config
-- `gradle.properties` — JVM args, `kotlin.code.style=official`, `android.useAndroidX=false`
+- `gradle.properties` — JVM args, `kotlin.code.style=official`, `android.useAndroidX=true`
 - `ARCHITECTURE.md` — the design source of truth: proposed modules, decision flow, rule precedence, privacy/accuracy requirements, delivery sequence, acceptance cases
 - `prototype-web/README.md` — what the web prototype does and its explicit non-scope
 - `.gitignore` — excludes `.gradle/`, `.kotlin/`, `local.properties`, `**/build/`, `*.iml`, `.idea/`, keystores

@@ -65,16 +65,17 @@ object Packets {
     fun question(data: ByteArray): DnsQuestion? {
         if (data.size < 17 || u16(data, 2) and 0xf800 != 0 || u16(data, 4) != 1 || u16(data, 6) != 0 || u16(data, 8) != 0) return null
         var at = 12
+        var terminated = false
         val labels = mutableListOf<String>()
         while (at < data.size) {
             val length = data[at++].toInt() and 255
-            if (length == 0) break
+            if (length == 0) { terminated = true; break }
             if (length > 63 || at + length > data.size) return null // Reject compression in incoming single-question queries.
             val label = String(data, at, length, Charsets.US_ASCII)
             if (!label.matches(Regex("[A-Za-z0-9_-]+"))) return null
             labels += label; at += length
         }
-        if (at + 4 > data.size || labels.isEmpty() || u16(data, at + 2) != 1) return null
+        if (!terminated || at + 4 > data.size || labels.isEmpty() || u16(data, at + 2) != 1) return null
         val domain = labels.joinToString(".").lowercase(java.util.Locale.ROOT)
         if (domain.length > 253) return null
         return DnsQuestion(domain, u16(data, at), at + 4)
@@ -86,9 +87,20 @@ object Packets {
         return reply
     }
     fun validResponse(query: ByteArray, response: ByteArray): Boolean {
-        if (response.size < 12 || u16(response, 0) != u16(query, 0) || u16(response, 2) and 0x8000 == 0 || u16(response, 4) != 1) return false
-        val q = question(query) ?: return false
-        // The question section is echoed by the recursive resolver; compare it before accepting any answer.
-        return response.size >= q.end && query.copyOfRange(12, q.end).contentEquals(response.copyOfRange(12, q.end))
+        return responseIssue(query, response) == null
+    }
+    fun responseIssue(query: ByteArray, response: ByteArray): DnsResponseIssue? {
+        val q = question(query) ?: return DnsResponseIssue.INVALID_QUERY
+        if (response.size > 65000) return DnsResponseIssue.TOO_LARGE
+        if (response.size < 12) return DnsResponseIssue.SHORT_HEADER
+        if (u16(response, 0) != u16(query, 0)) return DnsResponseIssue.TRANSACTION_ID
+        if (u16(response, 2) and 0xf800 != 0x8000) return DnsResponseIssue.FLAGS
+        if (u16(response, 4) != 1) return DnsResponseIssue.QUESTION_COUNT
+        if (response.size < q.end) return DnsResponseIssue.SHORT_QUESTION
+        // ASCII case differences in QNAME are equivalent (RFC 4343); lengths/terminator remain exact.
+        fun fold(value: Byte): Int = (value.toInt() and 255).let { if (it in 65..90) it + 32 else it }
+        for (i in 12 until q.end - 4) if (fold(query[i]) != fold(response[i])) return DnsResponseIssue.QUESTION_NAME
+        for (i in q.end - 4 until q.end) if (query[i] != response[i]) return DnsResponseIssue.QUESTION_TYPE_CLASS
+        return null
     }
 }

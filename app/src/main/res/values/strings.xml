@@ -1,0 +1,22 @@
+<resources>
+    <string name="test_decision">%1$s · %2$s\n%3$s</string>
+    <string name="clean_result">%1$s\n\n%2$s</string>
+    <string name="link_already_clean">Link đã sạch</string>
+    <plurals name="link_removed">
+        <item quantity="other">Đã bỏ %1$d tham số: %2$s</item>
+    </plurals>
+    <string name="detailed_history">Nhật ký tên miền</string>
+    <string name="browser_https_only">Phiên riêng tư chỉ cho phép HTTPS, không chứa thông tin đăng nhập.</string>
+    <string name="browser_loading">Đang mở %1$s…</string>
+    <string name="browser_active">Phiên đang mở · đóng phiên để xóa dữ liệu.</string>
+    <string name="browser_error">Không tải được trang. Kiểm tra mạng hoặc URL HTTPS.</string>
+    <string name="browser_invalid_cert">Chứng chỉ HTTPS không hợp lệ; đã hủy tải trang.</string>
+    <string name="browser_invalid_url">Nhập URL HTTPS đầy đủ, không chứa thông tin đăng nhập.</string>
+    <string name="browser_clearing">Đang xóa dữ liệu phiên…</string>
+    <string name="attribution_note">Android có thể gộp DNS qua bộ phân giải hệ thống; khi đó không xác định được app gốc. Danh sách này chỉ phản ánh DNS qua bộ lọc, không phải mọi kết nối mạng.</string>
+    <string name="traffic_summary">%1$s truy vấn tổng hợp · %2$s đã chặn</string>
+    <string name="traffic_footer">%1$d tên miền · %2$d sự kiện khớp bộ lọc. Tìm kiếm trên toàn bộ nhật ký đã lưu (tối đa 2.000 sự kiện / 7 ngày). Bộ đếm tổng hợp có thể lớn hơn nhật ký giới hạn này.</string>
+    <plurals name="filtered_requests"><item quantity="other">%1$d yêu cầu trong nhật ký</item></plurals>
+    <string name="outcome_summary">Đã ghi nhận %1$s yêu cầu %2$s</string>
+    <string name="dns_save_error">Không lưu được máy chủ. Thông tin bạn nhập vẫn còn; hãy thử lại.</string>
+</resources>

@@ -2,7 +2,7 @@
 
 PrivacyGuard is a proposed privacy app that combines network filtering, per-app rules, link cleaning, a private browser, and a dashboard.
 
-Status: architecture draft. This workspace does not yet contain a working VPN, browser, or application.
+Status: Android MVP implemented in `app/`: native UI, a split-route DNS VPN (UDP/TCP over IPv4/IPv6), local policies/counters, link cleaning, and a separate-process WebView session. Full network proxying and comprehensive tracker coverage remain outside this MVP. See [README.md](README.md) and [MVP scope and validation](docs/mvp.html) for its limitations and verification status.
 
 ## Modules
 
@@ -32,7 +32,7 @@ TUN access and packet parsing alone do not provide a functioning VPN. The implem
 Evaluate rules in this order, with the first matching decision winning:
 
 1. Explicit per-app domain exception, either allow or block.
-2. Global domain allowlist.
+2. Global domain exception, either allow or block.
 3. Per-app category preference.
 4. Global category preference.
 5. Default allow for unmatched traffic.
