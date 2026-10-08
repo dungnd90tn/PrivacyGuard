@@ -1,0 +1,16 @@
+<resources>
+    <string name="test_decision">%1$s · %2$s\n%3$s</string>
+    <string name="clean_result">%1$s\n\n%2$s</string>
+    <string name="link_already_clean">Link đã sạch</string>
+    <plurals name="link_removed">
+        <item quantity="other">Đã bỏ %1$d tham số: %2$s</item>
+    </plurals>
+    <string name="detailed_history">Lưu nhật ký tên miền chi tiết</string>
+    <string name="browser_https_only">Phiên riêng tư chỉ cho phép HTTPS, không chứa thông tin đăng nhập.</string>
+    <string name="browser_loading">Đang mở %1$s…</string>
+    <string name="browser_active">Phiên đang mở · đóng phiên để xóa dữ liệu.</string>
+    <string name="browser_error">Không tải được trang. Kiểm tra mạng hoặc URL HTTPS.</string>
+    <string name="browser_invalid_cert">Chứng chỉ HTTPS không hợp lệ; đã hủy tải trang.</string>
+    <string name="browser_invalid_url">Nhập URL HTTPS đầy đủ, không chứa thông tin đăng nhập.</string>
+    <string name="browser_clearing">Đang xóa dữ liệu phiên…</string>
+</resources>

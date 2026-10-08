@@ -1,0 +1,58 @@
+# PrivacyGuard Android MVP
+
+Ứng dụng Android Kotlin (Android 10 trở lên) để lọc DNS cục bộ, quản lý luật và làm sạch link. Giao diện bằng tiếng Việt, dùng Android SDK trực tiếp, không cần tài khoản hoặc backend.
+
+## Chạy và kiểm tra
+
+Cần JDK 17 và Android SDK gồm `platforms;android-35`, `build-tools;35.0.0`, `platform-tools`. Đặt `ANDROID_HOME` tới SDK hoặc tạo `local.properties` với `sdk.dir=/đường/dẫn/SDK`. Gradle Wrapper 8.11.1 đã có trong repo và kiểm tra SHA-256 của bản phân phối.
+
+```sh
+./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lint
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Mở PrivacyGuard, chọn **Bật lọc DNS** và chấp nhận hộp thoại VPN của Android. Chỉ một VPN được hoạt động tại một thời điểm. Dừng bằng nút trong ứng dụng hoặc thông báo dịch vụ. Nếu tiến trình bị dừng, ứng dụng không tự bật lại VPN.
+
+## Tính năng
+
+- VPN chỉ định tuyến hai địa chỉ DNS nội bộ, xử lý UDP/TCP trên IPv4/IPv6. Truy vấn bị chặn nhận NXDOMAIN; truy vấn được phép được chuyển tới Quad9 `9.9.9.9`, dự phòng Cloudflare `1.1.1.1`. Lỗi mạng nhận SERVFAIL.
+- Luật nhóm toàn cục/theo ứng dụng, ngoại lệ exact/wildcard, thay thế luật trùng và công cụ thử quyết định không truy cập mạng. Danh sách ứng dụng lấy từ các launcher app mà Android cho phép nhìn thấy.
+- Link cleaner giữ thứ tự/encoding, tham số lặp và fragment; có tham số tùy chỉnh, sao chép/chia sẻ và nhận link qua Android Share.
+- Dashboard từ phản hồi DNS đã ghi vào TUN; tách chặn, chuyển tiếp và lỗi. Lưu bộ đếm tổng hợp trong 7 ngày lịch; nhật ký chi tiết mặc định tắt, nếu bật thì giới hạn 2.000 sự kiện/7 ngày. Có tìm kiếm, bộ lọc, xuất JSON qua trình chọn tệp và xóa dữ liệu.
+- WebView HTTPS trong tiến trình/kho dữ liệu riêng; tắt cookie bên thứ ba, chặn tracker bên thứ ba theo luật, tắt truy cập mạng của service worker, xóa cookie/cache/WebStorage khi đóng và trước phiên mới. Không lưu URL vào dashboard; chặn ảnh chụp màn hình của phiên.
+- Icon từ ảnh logo đã cung cấp: adaptive icon với nền đen, khoảng an toàn chống cắt và lớp monochrome cho launcher Android 13 trở lên. PNG foreground ở `app/src/main/res/drawable-nodpi/ic_launcher_art.png`.
+
+## Phạm vi và giới hạn
+
+Đây là **bộ lọc DNS**, không phải proxy toàn bộ lưu lượng, VPN mã hóa hoặc bộ chặn mọi tracker. DNS over HTTPS/TLS, DNS tự chọn, địa chỉ IP trực tiếp và kết nối đã cache có thể bỏ qua lọc. IPv6 extension headers và IP fragments chưa được hỗ trợ trong đường DNS. Danh sách tracker khởi đầu nhỏ, không phải feed đầy đủ.
+
+Android thường dùng resolver chung, nên UID của socket DNS không đảm bảo nhận diện được ứng dụng gốc. Khi UID là hệ thống, không hợp lệ hoặc dùng chung bởi nhiều package, sự kiện hiển thị **Không rõ ứng dụng** và dùng luật toàn cục. Luật ứng dụng chỉ được áp dụng khi có một package xác định; không suy đoán từ tên miền.
+
+Trình duyệt không tạo ẩn danh với website/nhà mạng; chặn theo tên miền không phân biệt đường dẫn trên domain dùng chung. `shouldInterceptRequest` không kiểm tra lại tất cả redirect. Xóa dữ liệu và vòng đời VPN cần kiểm thử trên các thiết bị/WebView mục tiêu; xóa lúc khởi động bảo vệ phiên kế tiếp khi tiến trình trước bị hệ thống kết thúc đột ngột.
+
+## Kiểm thử trên emulator
+
+Có bộ unit test cho luật, URL, DNS, checksum, gói tin lỗi và TCP. APK kiểm thử thiết bị kiểm tra SQLite/SharedPreferences, retention, các nút UI và truy vấn thực qua TUN. Chỉ dùng các lệnh sau với **emulator thử nghiệm Android 13 trở lên**, vì kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
+
+```sh
+./gradlew :app:assembleDebugAndroidTest
+adb -s emulator-5554 install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s emulator-5554 shell pm grant com.privacyguard.android android.permission.POST_NOTIFICATIONS
+adb -s emulator-5554 shell appops set com.privacyguard.android ACTIVATE_VPN allow
+adb -s emulator-5554 shell am instrument -w com.privacyguard.android.test/com.privacyguard.android.MvpInstrumentation
+```
+
+Trên thiết bị thật, cấp quyền VPN qua giao diện. Kiểm tra thêm: từ chối quyền; bật/dừng liên tiếp; thu hồi VPN; chuyển Wi-Fi/di động; DNS mã hóa; trang HTTPS có cookie/localStorage và phiên mới sau khi đóng/kill tiến trình. Xem [phạm vi và biên bản MVP](docs/mvp.html) và [kiến trúc](ARCHITECTURE.md).
+
+## Web prototype
+
+`prototype-web/` vẫn là simulator độc lập, không lọc lưu lượng thật:
+
+```sh
+cd prototype-web
+npm start
+npm test
+```
+
+Mở `http://localhost:3000`. Dữ liệu demo của web không xuất hiện trong bộ đếm Android.

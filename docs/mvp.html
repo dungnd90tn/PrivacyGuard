@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrivacyGuard — Phạm vi và kiểm chứng MVP Android</title>
+  <style>
+    :root { color-scheme: light; --ink:#192b23; --muted:#526357; --line:#cdd7c9; --paper:#f6f7f2; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.65 system-ui,sans-serif; }
+    main { max-width:1000px; margin:32px auto; padding:32px; background:#fff; border:1px solid var(--line); border-radius:18px; }
+    header { border-bottom:2px solid var(--ink); padding-bottom:18px; } h1 { font-size:32px; line-height:1.25; margin:8px 0 12px; }
+    h2 { font-size:21px; margin:28px 0 12px; } p { margin:10px 0; } .meta,.muted { color:var(--muted); font-size:13px; }
+    .badge { display:inline-block; background:#e5ebdf; color:#274b30; border-radius:6px; padding:3px 10px; font-weight:700; font-size:12px; }
+    .notice { border-left:4px solid #8c6417; padding:12px 16px; background:#fff6df; }
+    table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0; } th,td { text-align:left; padding:10px; border:1px solid var(--line); vertical-align:top; }
+    th { background:#e5ebdf; } code,pre { font-family:ui-monospace,monospace; font-size:12px; overflow-wrap:anywhere; }
+    pre { padding:16px; background:#f0f3ec; white-space:pre-wrap; border:1px solid var(--line); border-radius:8px; }
+    a { color:#28552d; } footer { margin-top:24px; border-top:1px solid var(--line); padding-top:12px; color:var(--muted); font-size:12px; }
+    @media(max-width:680px) { main { margin:0; padding:20px; border:0; border-radius:0; } h1 { font-size:26px; } th,td { padding:7px; } }
+    @page { size:A4; margin:18mm 16mm; }
+    @media print {
+      body { background:#fff; font-size:10pt; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      main { max-width:none; margin:0; padding:0; border:0; border-radius:0; } h1 { font-size:23pt; } h2 { font-size:14pt; }
+      h1,h2,h3 { page-break-after:avoid; } table,pre,figure { page-break-inside:avoid; } thead { display:table-header-group; }
+      tr { page-break-inside:avoid; } .no-print { display:none !important; }
+      a[href^="https://"]::after { content:" (" attr(href) ")"; font-size:9pt; overflow-wrap:anywhere; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="badge">ANDROID MVP 0.1</span>
+    <h1>PrivacyGuard: phạm vi và kiểm chứng</h1>
+    <p>Bản triển khai đầu tiên của sản phẩm Android, dựa trên kiến trúc và lõi luật đã có.</p>
+    <p class="meta">Phiên bản 0.1 · 08/10/2026 · Phân loại: nội bộ dự án · Tác giả: Codex</p>
+    <p class="no-print"><a href="../README.md">Hướng dẫn build</a> · <a href="../ARCHITECTURE.md">Kiến trúc gốc</a></p>
+  </header>
+
+  <section>
+    <h2>Hiện trạng và thay đổi</h2>
+    <p>Trước nhiệm vụ này, <code>app/</code> có cấu hình Android, manifest và hai tệp lõi <code>core/Rules.kt</code>, <code>core/Packets.kt</code>. Các activity/service được khai báo chưa có triển khai. <code>prototype-web/</code> đã có simulator độc lập và không lọc lưu lượng thật.</p>
+    <p>MVP tái sử dụng lõi Kotlin, bổ sung activity, service, kho luật và thống kê cục bộ. Không tạo backend, đăng nhập hoặc pipeline dịch vụ. Graphify được gọi nhưng không có <code>graphify-out/graph.json</code>; kiểm kê thực hiện trực tiếp trên tài liệu và mã nguồn của repo.</p>
+    <p>Icon launcher dùng foreground PNG chuẩn bị từ logo người dùng qua imagegen, với prompt tách nền và giữ hình khiên/chữ D, màu sắc và bố cục. Asset nằm ở <code>app/src/main/res/drawable-nodpi/ic_launcher_art.png</code>; adaptive icon có nền đen, inset 13% và lớp monochrome cho Android 13+. Logo cũng được hiển thị ở header ứng dụng.</p>
+    <table>
+      <thead><tr><th>Luồng người dùng</th><th>Hành vi được triển khai</th><th>Mã chính</th></tr></thead>
+      <tbody>
+        <tr><td>Bật/dừng lọc</td><td>Xin quyền VPN; foreground notification có nút dừng; chỉ route DNS nội bộ, chuyển tiếp truy vấn được phép bằng socket được bảo vệ khỏi VPN.</td><td><code>DnsVpnService.kt</code></td></tr>
+        <tr><td>Quản lý luật</td><td>Nhóm toàn cục/theo ứng dụng, ngoại lệ cho phép/chặn, wildcard chỉ tên miền con, thay thế khóa trùng; thử quyết định không gọi mạng.</td><td><code>MainActivity.kt</code>, <code>GuardStore.kt</code>, <code>core/Rules.kt</code></td></tr>
+        <tr><td>Làm sạch link</td><td>Loại tham số tracking; giữ query/fragment; sao chép, Android Share, nhận link được chia sẻ vào ứng dụng.</td><td><code>MainActivity.kt</code>, <code>core/Rules.kt</code></td></tr>
+        <tr><td>Xem quan sát</td><td>Bộ đếm khởi tạo từ 0; phân biệt chặn/chuyển tiếp/lỗi, nhóm theo ứng dụng, nhật ký opt-in, tìm kiếm/bộ lọc, JSON export và xóa.</td><td><code>GuardStore.kt</code>, <code>MainActivity.kt</code></td></tr>
+        <tr><td>Duyệt phiên riêng</td><td>WebView trong tiến trình/kho riêng; HTTPS; cookie bên thứ ba tắt; lọc tracker bên thứ ba; xóa cookie/cache/WebStorage khi kết thúc và trước khi tải phiên mới.</td><td><code>PrivateBrowserActivity.kt</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Quyết định và dữ liệu</h2>
+    <p>Ưu tiên luật: ngoại lệ ứng dụng → ngoại lệ toàn cục → nhóm ứng dụng → nhóm toàn cục → cho phép. Trong cùng phạm vi, exact thắng wildcard; wildcard có hậu tố dài hơn thắng. <code>*.example.com</code> không khớp apex hoặc <code>notexample.com</code>.</p>
+    <p>DNS thường tới hai địa chỉ riêng của VPN được xử lý qua UDP/TCP trên IPv4/IPv6. Chặn trả NXDOMAIN. Truy vấn được phép tới Quad9 (9.9.9.9), dự phòng Cloudflare (1.1.1.1). Lỗi chuyển tiếp, phản hồi sai ID/question hoặc quá lớn trả SERVFAIL và được đếm riêng. DNS UDP bị truncated được thử lại qua TCP tới resolver.</p>
+    <p>Chỉ ghi sự kiện sau khi phản hồi đã được ghi thành công vào TUN. TCP retransmission không tạo thêm quyết định. Bộ đếm tổng hợp giữ 7 ngày lịch theo múi giờ thiết bị; nhật ký tên miền mặc định tắt, nếu bật thì giữ tối đa 2.000 sự kiện trong 7 ngày. Tắt nhật ký xóa dữ liệu tên miền. Không lưu packet payload hoặc URL duyệt web vào SQLite.</p>
+    <p>Ứng dụng chỉ được gán khi UID do Android cung cấp thuộc một package duy nhất ngoài UID hệ thống. Resolver dùng chung, UID lỗi hoặc nhiều package được hiển thị “Không rõ ứng dụng” và dùng luật toàn cục. Tên app không được suy đoán từ domain.</p>
+  </section>
+
+  <section>
+    <h2>Kiểm chứng và tiêu chí nghiệm thu</h2>
+    <table>
+      <thead><tr><th>Tiêu chí</th><th>Bằng chứng</th><th>Trạng thái</th></tr></thead>
+      <tbody>
+        <tr><td>Domain boundary, ưu tiên và cách ly app</td><td><code>RulesTest</code>; dữ liệu exact/wildcard/conflicting rules, app khác, unknown app</td><td>Unit test đạt</td></tr>
+        <tr><td>Giữ encoding, query lặp, fragment; từ chối URL nguy hiểm</td><td><code>RulesTest</code>, 17 test của web prototype</td><td>Unit test đạt</td></tr>
+        <tr><td>Packet/DNS lỗi không gây exception</td><td><code>PacketsTest</code>: 15.000 mẫu ngẫu nhiên, checksum, fragments, IPv6 extensions, DNS compression và header lỗi</td><td>Unit test đạt</td></tr>
+        <tr><td>Không gọi resolver khi chặn; lỗi không được coi là thành công</td><td><code>DnsFilterTest</code>: NXDOMAIN, SERVFAIL, mismatched/oversized reply, timeout và service discovery</td><td>Unit test đạt</td></tr>
+        <tr><td>TCP DNS handshake, query chia nhỏ, pipeline, retransmission, giới hạn kết nối</td><td><code>TcpDnsTest</code>, cả IPv4/IPv6</td><td>Unit test đạt</td></tr>
+        <tr><td>Khôi phục policy JSON và thay thế khóa trùng</td><td><code>PolicyCodecTest</code>, dữ liệu hợp lệ/hỏng, package scope sai và giới hạn 500 ngoại lệ</td><td>3 unit test đạt</td></tr>
+        <tr><td>Biên dịch app/test APK, Android Lint</td><td><code>assembleDebug</code>, <code>assembleDebugAndroidTest</code>, <code>lintDebug</code>, <code>lintRelease</code>; Gradle Wrapper 8.11.1 và SHA-256 đã chạy kiểm chứng.</td><td>Build đạt; debug/release không có finding</td></tr>
+        <tr><td>SQLite retention, UI tương tác, DNS thật qua TUN</td><td>Đã thêm <code>MvpInstrumentation</code> và biên dịch APK test; SDK emulator cài đặt thất bại vì <code>Disk quota exceeded</code>, kể cả khi chuyển thư mục cài.</td><td>Chưa chạy trên thiết bị</td></tr>
+        <tr><td>Cookie/WebStorage được xóa; phiên mới không phục hồi dữ liệu</td><td>Cần chạy các bước dưới đây trên thiết bị/WebView mục tiêu.</td><td>Chưa xác minh trên thiết bị</td></tr>
+        <tr><td>Tốc độ hiển thị và thao tác trên Android</td><td>Chưa có thiết bị/emulator để đo; không suy diễn hiệu năng UI từ unit test.</td><td>Chưa đo</td></tr>
+      </tbody>
+    </table>
+    <p>Tổng: 20 unit test Android đạt, 17 test web đạt. Android kiểm tra bằng Gradle Wrapper/JUnit; web chạy trực tiếp <code>node test/lib.test.js</code> để quan sát đủ từng test trong môi trường sandbox. Báo cáo JUnit và lint ở <code>app/build/reports/</code>. Không dùng kết quả unit test để khẳng định DNS thật qua TUN hoặc xóa dữ liệu WebView đã được kiểm chứng.</p>
+    <p>Test hồi quy packet được chạy riêng với <code>Packets.kt</code> bản HEAD gốc trong project tạm: 4 test, 1 thất bại với <code>ArrayIndexOutOfBoundsException</code> khi kiểm tra phản hồi cho query rỗng. Cùng test đạt với bản sửa, xác nhận phép kiểm tra bắt được lỗi ban đầu. Không thay thế hoặc revert mã nguồn trong working tree để chạy phép đối chiếu này.</p>
+    <p class="notice">Build và unit test không thay thế kiểm thử thiết bị. Chưa khẳng định độ ổn định VPN trên từng nhà sản xuất hoặc xóa mọi dữ liệu website. APK này là MVP để cài thử và tiếp tục nghiệm thu trên Android.</p>
+  </section>
+
+  <section>
+    <h2>Kiểm thử thiết bị còn lại</h2>
+    <ol>
+      <li>Cài APK vào emulator riêng; cấp VPN và quyền thông báo. Chạy <code>MvpInstrumentation</code> theo README. Test kiểm tra storage/retention, nút cleaner/rules và DNS thật qua UDP/TCP IPv4/IPv6. Test chỉ sửa dữ liệu trên emulator thử nghiệm.</li>
+      <li>Thử từ chối VPN, bật/dừng nhanh, dừng từ notification, thu hồi VPN, kill tiến trình và chuyển Wi-Fi/di động. Không được hiện trạng thái đang lọc khi TUN không còn hoạt động.</li>
+      <li>Mở một tên miền HTTPS được phép; thêm ngoại lệ chặn một tên miền kiểm soát; xác nhận phản hồi/counter và Internet thông thường. Thử lỗi resolver và bật DNS mã hóa để thấy phạm vi bỏ qua.</li>
+      <li>Ở phiên browser, dùng một trang thử nghiệm có cookie/localStorage/IndexedDB. Đóng và mở lại để kiểm tra dữ liệu thuộc chính sách xóa. Thử kill tiến trình trước khi đóng; phiên kế tiếp phải xóa dữ liệu trước khi tải. Đối chiếu các cơ chế storage mà WebView thực tế hỗ trợ.</li>
+      <li>Kiểm tra màn hình hẹp, font lớn, xoay màn hình, trạng thái bàn phím, đầu vào lỗi, xóa dữ liệu và export qua trình chọn tệp; đo thời gian cold start và độ phản hồi trên thiết bị mục tiêu.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Giới hạn đã công bố</h2>
+    <p>MVP không proxy toàn bộ IP traffic, không mã hóa đường hầm, không giải mã HTTPS và không chặn DoH/DoT, DNS tự chọn hay IP trực tiếp. IP fragments và IPv6 extension headers chưa hỗ trợ. Danh sách tracker nhỏ; domain dùng chung có thể chứa cả quảng cáo và chức năng thiết yếu.</p>
+    <p>Browser không tạo ẩn danh với website/nhà mạng. Lọc tài nguyên dùng WebView request interception, không kiểm tra lại mọi redirect; service worker bị tắt truy cập mạng. Chính sách xóa dùng các API cookie/cache/WebStorage, không cam kết xóa dấu vết ngoài kho của ứng dụng hoặc toàn bộ cơ chế lưu trữ của mọi phiên bản WebView.</p>
+    <p>Đối chiếu cơ chế nền tảng: <a href="https://developer.android.com/develop/connectivity/vpn">Android VPN</a>, <a href="https://developer.android.com/reference/android/webkit/WebView#setDataDirectorySuffix(java.lang.String)">WebView data directory</a>, <a href="https://developer.android.com/reference/android/webkit/WebViewClient#shouldInterceptRequest(android.webkit.WebView,%20android.webkit.WebResourceRequest)">WebView request interception</a>.</p>
+  </section>
+  <section id="icon-asset">
+    <h2>Asset icon</h2>
+    <p>Phương thức: công cụ imagegen tích hợp, dùng ảnh người dùng làm edit target và xuất nền alpha. Tệp cuối: <code>app/src/main/res/drawable-nodpi/ic_launcher_art.png</code> (1254 × 1254, RGBA). Căn vị trí bằng XML inset; không dùng Python để chỉnh ảnh. Prompt đã dùng:</p>
+    <pre>Use case: background-extraction. Asset type: Android app launcher icon foreground. Image 1 is the exact supplied logo and the edit target, not a style reference. Prepare this same existing artwork as a transparent PNG: retain the teal-to-blue shield outline, its thin dark-blue outer outline, the blue D with pale-blue inner highlight, the three gold/yellow horizontal rounded bars and their teal glow, and the small internal teal shield lines, with the same proportions, positions, shapes and colors. Remove only the black background and black empty areas; keep the complete original logo. No redesign, no extra marks, no text, no border, no mockup. Center the complete logo on a square transparent canvas with enough transparent margin that the logo occupies approximately 70% of canvas height, suitable for an Android adaptive icon. Preserve the source identity and details as closely as possible.</pre>
+  </section>
+  <footer>PrivacyGuard MVP 0.1 · 08/10/2026 · Thay đổi để nguyên trên working tree, chưa commit/push. Tài liệu hoạt động offline; đã kiểm tra print preview A4 trong Chromium, không có tràn ngang hoặc bảng bị cắt.</footer>
+</main>
+</body>
+</html>

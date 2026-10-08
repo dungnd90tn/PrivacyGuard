@@ -32,7 +32,7 @@ First launch creates 864 clearly labeled sample requests using reserved `example
 
 **This MVP does not block real network traffic.** It has no TUN interface, IP/UDP/TCP/DNS packet parser, VPN forwarding, OS application attribution, or production tracker feed. The Private Browser screen describes planned native functionality; it does not provide isolated cookies, third-party blocking, or delete-on-close browsing.
 
-Device-wide protection and an isolated browser require a native implementation. See [ARCHITECTURE.md](ARCHITECTURE.md) for the proposed next stages.
+The sibling Android MVP now implements a DNS filtering service and a separate-process WebView session. See the [root README](../README.md) for native build instructions and limits, and [ARCHITECTURE.md](../ARCHITECTURE.md) for the design. This web prototype remains a simulator.
 
 ## Rule semantics
 
