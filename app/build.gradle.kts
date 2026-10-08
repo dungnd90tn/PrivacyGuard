@@ -9,8 +9,8 @@ android {
         applicationId = "com.privacyguard.android"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "com.privacyguard.android.MvpInstrumentation"
     }
     compileOptions {
@@ -19,10 +19,12 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildTypes { release { isMinifyEnabled = false } }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     lint { abortOnError = true; warningsAsErrors = true }
 }
 dependencies {
     testImplementation("junit:junit:4.13.2")
     // JVM tests exercise the real policy JSON codec instead of Android's stub implementation.
     testImplementation("org.json:json:20240303")
+    testImplementation("org.robolectric:robolectric:4.17")
 }

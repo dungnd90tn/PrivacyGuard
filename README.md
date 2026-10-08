@@ -13,6 +13,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Mở PrivacyGuard, chọn **Bật lọc DNS** và chấp nhận hộp thoại VPN của Android. Chỉ một VPN được hoạt động tại một thời điểm. Dừng bằng nút trong ứng dụng hoặc thông báo dịch vụ. Nếu tiến trình bị dừng, ứng dụng không tự bật lại VPN.
 
+## Xem tên miền theo ứng dụng
+
+Bản **0.2.0** có giao diện sáng/tối, thanh tab dưới và màn hình chi tiết ứng dụng:
+
+1. Mở **Ứng dụng → Bật nhật ký tên miền**. Nhật ký mặc định tắt và chỉ ghi các truy vấn mới từ lúc bật.
+2. Chọn **Bật lọc DNS** và cấp quyền VPN; sử dụng ứng dụng cần quan sát.
+3. Mở **Ứng dụng → tên app** để xem tên miền, số lần chặn/chuyển tiếp/lỗi và nhật ký. Chạm tên miền để xem lý do hoặc tạo luật.
+4. Nếu Android dùng resolver chung, xem **Chưa xác định ứng dụng** hoặc **Tất cả tên miền**. Không suy đoán app từ tên miền; luật tại các màn hình này là toàn cục, có xác nhận phạm vi trước khi lưu.
+
+Tìm kiếm và bộ lọc chạy trên toàn bộ tối đa 2.000 sự kiện, trước khi phân trang 30 dòng. Nút xuất trong màn hình tên miền xuất đúng kết quả đang lọc. Bộ đếm tổng hợp có thể lớn hơn nhật ký đã giới hạn. [Ảnh giao diện native và biên bản 0.2](docs/mobile-redesign.html) dùng dữ liệu kiểm thử, không có dữ liệu mẫu trong APK.
+
 ## Tính năng
 
 - VPN chỉ định tuyến hai địa chỉ DNS nội bộ, xử lý UDP/TCP trên IPv4/IPv6. Truy vấn bị chặn nhận NXDOMAIN; truy vấn được phép được chuyển tới Quad9 `9.9.9.9`, dự phòng Cloudflare `1.1.1.1`. Lỗi mạng nhận SERVFAIL.
@@ -26,13 +37,13 @@ Mở PrivacyGuard, chọn **Bật lọc DNS** và chấp nhận hộp thoại VP
 
 Đây là **bộ lọc DNS**, không phải proxy toàn bộ lưu lượng, VPN mã hóa hoặc bộ chặn mọi tracker. DNS over HTTPS/TLS, DNS tự chọn, địa chỉ IP trực tiếp và kết nối đã cache có thể bỏ qua lọc. IPv6 extension headers và IP fragments chưa được hỗ trợ trong đường DNS. Danh sách tracker khởi đầu nhỏ, không phải feed đầy đủ.
 
-Android thường dùng resolver chung, nên UID của socket DNS không đảm bảo nhận diện được ứng dụng gốc. Khi UID là hệ thống, không hợp lệ hoặc dùng chung bởi nhiều package, sự kiện hiển thị **Không rõ ứng dụng** và dùng luật toàn cục. Luật ứng dụng chỉ được áp dụng khi có một package xác định; không suy đoán từ tên miền.
+Android thường dùng resolver chung, nên UID của socket DNS không đảm bảo nhận diện được ứng dụng gốc. Khi UID là hệ thống, không hợp lệ hoặc dùng chung bởi nhiều package, sự kiện hiển thị **Chưa xác định ứng dụng** và dùng luật toàn cục. Luật ứng dụng chỉ được áp dụng khi có một package xác định; không suy đoán từ tên miền.
 
 Trình duyệt không tạo ẩn danh với website/nhà mạng; chặn theo tên miền không phân biệt đường dẫn trên domain dùng chung. `shouldInterceptRequest` không kiểm tra lại tất cả redirect. Xóa dữ liệu và vòng đời VPN cần kiểm thử trên các thiết bị/WebView mục tiêu; xóa lúc khởi động bảo vệ phiên kế tiếp khi tiến trình trước bị hệ thống kết thúc đột ngột.
 
 ## Kiểm thử trên emulator
 
-Có bộ unit test cho luật, URL, DNS, checksum, gói tin lỗi và TCP. APK kiểm thử thiết bị kiểm tra SQLite/SharedPreferences, retention, các nút UI và truy vấn thực qua TUN. Chỉ dùng các lệnh sau với **emulator thử nghiệm Android 13 trở lên**, vì kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
+Có bộ unit test cho luật, URL, DNS, checksum, gói tin lỗi, TCP và nhóm/lọc tên miền. Các kiểm thử Robolectric 4.17 chạy view Android thật và SQLite native trên SDK 35; có kiểm tra phạm vi luật, opt-in, cỡ chữ và render PNG vào `app/build/ui-previews/`. `android.useAndroidX=true` phục vụ thư viện kiểm thử; APK không thêm AndroidX runtime. APK kiểm thử thiết bị kiểm tra SQLite/SharedPreferences, retention, các nút UI và truy vấn thực qua TUN. Chỉ dùng các lệnh sau với **emulator thử nghiệm Android 13 trở lên**, vì kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
 
 ```sh
 ./gradlew :app:assembleDebugAndroidTest

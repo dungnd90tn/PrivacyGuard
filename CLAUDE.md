@@ -111,7 +111,7 @@ The Gradle Wrapper is present and pinned to Gradle 8.11.1 with its distribution 
 ./gradlew :app:assembleDebugAndroidTest
 ```
 
-Key facts from the build files: Android Gradle Plugin 8.9.2, Kotlin 2.1.20, `compileSdk`/`targetSdk` 35, `minSdk` 29, Java 17 toolchain (`app/build.gradle.kts`). `gradle.properties` sets `android.useAndroidX=false` — this project currently has zero AndroidX (or any) dependencies; check that flag before assuming an AndroidX API is available.
+Key facts from the build files: Android Gradle Plugin 8.9.2, Kotlin 2.1.20, `compileSdk`/`targetSdk` 35, `minSdk` 29, Java 17 toolchain (`app/build.gradle.kts`). `gradle.properties` sets `android.useAndroidX=true` — AndroidX is present only through Robolectric test dependencies; there are no AndroidX runtime libraries, so check the scope before using an AndroidX API.
 
 ### Web prototype (`prototype-web/`)
 
@@ -145,7 +145,7 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 - **`Packets.kt`** — dependency-free IPv4/IPv6 header validation, UDP parsing + checksum (RFC 1071), DNS question parsing, DNS error/reply construction, and response validation (ID + echoed-question matching). This is the packet layer `DnsVpnService` will eventually call into; no Android dependencies, so it's unit-testable in isolation.
 - **`Rules.kt`** — the rule-evaluation core: `Category`/`Action`/`DomainRule`/`Decision`/`Policy` data types, `Rules.decide()` (tracker classification → per-app/global domain exception → per-app/global category policy → default allow, per `ARCHITECTURE.md`'s rule precedence), domain normalization (`IDN` + label/length validation, exact-vs-wildcard + longest-suffix precedence), and a separate `LinkCleaner` object stripping `utm_*`/`fbclid`/`gclid`/custom query keys while preserving unrelated query parts and the fragment.
 
-`app/src/main/res/` has a launcher icon, base theme, strings, and backup exclusions. Native layouts are constructed programmatically with `Ui.kt`; no AndroidX runtime is used. Policies/counters are stored by `GuardStore.kt`, and platform-independent DNS/TCP processing lives in `core/DnsFilter.kt` and `core/TcpDns.kt`.
+`app/src/main/res/` has a launcher icon, base theme, strings, and backup exclusions. Native layouts are constructed programmatically with `Ui.kt`; no AndroidX runtime is used. Version 0.2 uses blue light/dark palettes and persistent bottom tabs; `Traffic.kt` filters the complete retained history and separates All/Unknown/package scopes. See `docs/mobile-redesign.html` for native render evidence and tests. Policies/counters are stored by `GuardStore.kt`, and platform-independent DNS/TCP processing lives in `core/DnsFilter.kt` and `core/TcpDns.kt`.
 
 ### `prototype-web/` — web prototype (Node ≥ 20, zero dependencies)
 
@@ -167,7 +167,7 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 - **Validation via `require()`:** invalid input throws `IllegalArgumentException` with a user-facing message (`Rules.normalize`, `LinkCleaner.clean`) — except the packet-parsing path (`Packets.parseUdp`, `Packets.question`), which returns `null` on malformed input instead of throwing, since malformed network data is expected, not exceptional.
 - **User-facing strings are Vietnamese, written directly in code** (`Category.label`, `require()` messages in `Rules.kt`) — there is no localization/resource layer yet. Identifiers and comments stay in English.
 - **Android Lint gates the build:** `lint { abortOnError = true }` in `app/build.gradle.kts` — a new lint finding fails `:app:lint` (and anything depending on it); it is not an optional warning.
-- **`android.useAndroidX=false`** — currently true because there are zero AndroidX (or any) dependencies; re-check before assuming an AndroidX API is available.
+- **`android.useAndroidX=true`** — required by Robolectric 4.17 test-only AndroidX dependencies. There are still no AndroidX runtime dependencies; do not assume AndroidX UI APIs are available.
 - **`prototype-web/` JS:** plain ES modules, no build step, no external dependencies — keep it that way per its README ("No dependencies, accounts, API keys, or build step are required").
 
 ## Testing Stack
@@ -180,7 +180,7 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 - `settings.gradle.kts` — root Gradle project name (`PrivacyGuard`) and the single included module (`:app`)
 - `build.gradle.kts` (root) — plugin versions: Android Gradle Plugin 8.9.2, Kotlin 2.1.20 (`apply false`, applied per-module)
 - `app/build.gradle.kts` — the Android module: namespace/applicationId `com.privacyguard.android`, SDK versions, Java 17 toolchain, lint config
-- `gradle.properties` — JVM args, `kotlin.code.style=official`, `android.useAndroidX=false`
+- `gradle.properties` — JVM args, `kotlin.code.style=official`, `android.useAndroidX=true`
 - `ARCHITECTURE.md` — the design source of truth: proposed modules, decision flow, rule precedence, privacy/accuracy requirements, delivery sequence, acceptance cases
 - `prototype-web/README.md` — what the web prototype does and its explicit non-scope
 - `.gitignore` — excludes `.gradle/`, `.kotlin/`, `local.properties`, `**/build/`, `*.iml`, `.idea/`, keystores

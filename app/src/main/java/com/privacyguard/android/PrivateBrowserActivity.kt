@@ -47,7 +47,7 @@ class PrivateBrowserActivity : Activity() {
         pendingUrl = intent.getStringExtra("url").orEmpty()
         intent.removeExtra("url"); intent.removeExtra("policy")
         val ui = Ui(this)
-        val root = ui.column().apply { setBackgroundColor(ui.background); fitsSystemWindows = true; isSaveEnabled = false }
+        val root = ui.column().apply { setBackgroundColor(ui.background); isSaveEnabled = false }
         val toolbar = ui.column(12)
         toolbar.addView(ui.text("Phiên riêng tư", 21f, true))
         toolbar.addView(ui.text("HTTPS · cookie riêng · không lưu lịch sử · đóng để xóa", 12f, color = ui.muted))
@@ -118,7 +118,7 @@ class PrivateBrowserActivity : Activity() {
         ServiceWorkerController.getInstance().serviceWorkerWebSettings.apply {
             blockNetworkLoads = true; allowFileAccess = false; allowContentAccess = false
         }
-        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); setContentView(root)
+        root.addView(web, LinearLayout.LayoutParams(-1, 0, 1f)); setContentView(root); ui.edgeToEdge(this, root)
         val generation = ++sessionGeneration
         clearData {
             if (!isDestroyed && !closing && generation == sessionGeneration) { ready = true; navigate(pendingUrl); pendingUrl = "" }

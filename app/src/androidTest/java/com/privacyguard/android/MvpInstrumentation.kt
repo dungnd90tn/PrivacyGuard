@@ -112,10 +112,11 @@ class MvpInstrumentation : Instrumentation() {
 
     private fun views(view: View): List<View> = listOf(view) + if (view is ViewGroup) (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
     private fun button(activity: Activity, title: String) = views(activity.window.decorView).filterIsInstance<Button>().first { it.text.toString() == title }
+    private fun tab(activity: Activity, title: String) = views(activity.window.decorView).first { it.contentDescription?.toString() == title && it.isClickable }
     private fun texts(activity: Activity) = views(activity.window.decorView).filterIsInstance<TextView>().map { it.text.toString() }
 
     private fun cleanerUi(activity: Activity) {
-        runOnMainSync { button(activity, "Link").performClick() }
+        runOnMainSync { tab(activity, "Link").performClick() }
         runOnMainSync {
             val input = views(activity.window.decorView).filterIsInstance<EditText>().first()
             input.setText("https://example.com/?utm_source=email&q=a%20b&q=a+b#hello")
@@ -128,7 +129,7 @@ class MvpInstrumentation : Instrumentation() {
 
     private fun rulesUi(activity: Activity) {
         runOnMainSync {
-            button(activity, "Luật").performClick()
+            tab(activity, "Luật").performClick()
             val input = views(activity.window.decorView).filterIsInstance<EditText>().first()
             input.setText("https://example.com"); button(activity, "Lưu ngoại lệ").performClick()
             check(texts(activity).any { it.contains("Nhập tên miền") })
@@ -139,7 +140,7 @@ class MvpInstrumentation : Instrumentation() {
         check(android.net.VpnService.prepare(targetContext) == null) { "Authorize VPN on the test emulator with appops ACTIVATE_VPN allow before running device tests." }
         GuardStore(targetContext).use { it.clearHistory() }
         runOnMainSync {
-            button(activity, "Tổng quan").performClick()
+            tab(activity, "Tổng quan").performClick()
             button(activity, "Bật lọc DNS").performClick()
         }
         val deadline = android.os.SystemClock.elapsedRealtime() + 10_000

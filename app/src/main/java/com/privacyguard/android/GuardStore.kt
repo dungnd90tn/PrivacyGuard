@@ -53,9 +53,6 @@ object PolicyCodec {
     }
 }
 
-data class Counter(val app: String?, val category: Category, val outcome: Outcome, val count: Long)
-data class GuardEvent(val time: Long, val app: String?, val domain: String, val category: Category, val outcome: Outcome, val reason: String)
-
 class GuardStore(context: Context) : AutoCloseable {
     private val prefs = context.applicationContext.getSharedPreferences("privacyguard", Context.MODE_PRIVATE)
     private val database = History(context.applicationContext)
@@ -145,7 +142,17 @@ class GuardStore(context: Context) : AutoCloseable {
         }
     }
 
-    fun events(limit: Int = 100): List<GuardEvent> {
+    fun timeline(days: Int = 7): List<DailyCount> {
+        val db = database.writableDatabase
+        prune(db)
+        return db.rawQuery("SELECT day,outcome,SUM(count) FROM counters WHERE day>=? GROUP BY day,outcome ORDER BY day",
+            arrayOf(LocalDate.now().minusDays(days.coerceIn(1, 7).toLong() - 1).toString())).use { cursor ->
+            buildList { while (cursor.moveToNext()) add(DailyCount(LocalDate.parse(cursor.getString(0)),
+                Outcome.valueOf(cursor.getString(1)), cursor.getLong(2))) }
+        }
+    }
+
+    fun events(limit: Int = 2000): List<GuardEvent> {
         val db = database.writableDatabase
         prune(db)
         return db.rawQuery("SELECT time,app,domain,category,outcome,reason FROM events ORDER BY id DESC LIMIT ?",
@@ -155,6 +162,18 @@ class GuardStore(context: Context) : AutoCloseable {
         }
     }
 
+    fun exportEvents(events: List<GuardEvent>, scope: String, days: Int, query: String, outcome: Outcome?): String = JSONObject().apply {
+        put("version", 2); put("exportedAt", java.time.Instant.now().toString()); put("simulated", false)
+        put("filter", JSONObject().put("scope", scope).put("days", days).put("query", query)
+            .put("outcome", outcome?.name ?: JSONObject.NULL))
+        put("events", eventJson(events))
+    }.toString(2)
+
+    private fun eventJson(events: List<GuardEvent>) = JSONArray().apply { events.forEach { event ->
+        put(JSONObject().put("time", event.time).put("app", event.app ?: JSONObject.NULL).put("domain", event.domain)
+            .put("category", event.category.name).put("outcome", event.outcome.name).put("reason", event.reason))
+    } }
+
     fun export(): String = JSONObject().apply {
         put("version", 1); put("exportedAt", java.time.Instant.now().toString()); put("simulated", false)
         put("policy", JSONObject(PolicyCodec.encode(policy))); put("customParams", JSONArray(customParams))
@@ -162,10 +181,7 @@ class GuardStore(context: Context) : AutoCloseable {
             put(JSONObject().put("app", counter.app ?: JSONObject.NULL).put("category", counter.category.name)
                 .put("outcome", counter.outcome.name).put("count", counter.count))
         } })
-        put("events", JSONArray().apply { events(2000).forEach { event ->
-            put(JSONObject().put("time", event.time).put("app", event.app ?: JSONObject.NULL).put("domain", event.domain)
-                .put("category", event.category.name).put("outcome", event.outcome.name).put("reason", event.reason))
-        } })
+        put("events", eventJson(events()))
     }.toString(2)
 
     fun clearHistory() {
