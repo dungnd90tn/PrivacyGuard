@@ -10,6 +10,7 @@ import com.privacyguard.android.core.DnsResult
 import com.privacyguard.android.core.DnsServer
 import com.privacyguard.android.core.DnsSettings
 import com.privacyguard.android.core.DnsServers
+import com.privacyguard.android.core.DnsMode
 import com.privacyguard.android.core.DomainRule
 import com.privacyguard.android.core.Outcome
 import com.privacyguard.android.core.Policy
@@ -64,7 +65,12 @@ class GuardStore(context: Context) : AutoCloseable {
     fun selectDns(id: String) = synchronized(prefs) {
         val settings = dnsSettings
         require(settings.servers.any { it.id == id }) { "Máy chủ không còn trong danh sách. Hãy chọn lại." }
-        require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(settings.copy(selectedId = id))).commit()) { "Không lưu được lựa chọn DNS. Hãy thử lại." }
+        val updated = settings.copy(selectedId = id).also { it.requireUsable() }
+        require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(updated)).commit()) { "Không lưu được lựa chọn DNS. Hãy thử lại." }
+    }
+    fun setDnsMode(mode: DnsMode) = synchronized(prefs) {
+        val updated = dnsSettings.copy(mode = mode).also { it.requireUsable() }
+        require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(updated)).commit()) { "Không lưu được chế độ DNS. Hãy thử lại." }
     }
     fun saveCustomDns(server: DnsServer, select: Boolean = true) = synchronized(prefs) {
         require(server.custom) { "Chỉ chỉnh sửa máy chủ tùy chỉnh." }
@@ -72,6 +78,7 @@ class GuardStore(context: Context) : AutoCloseable {
         val remaining = settings.custom.filterNot { it.id == server.id }
         require(remaining.size < DnsServers.MAX_CUSTOM) { "Bạn có thể lưu tối đa 20 máy chủ tùy chỉnh." }
         val updated = settings.copy(custom = remaining + server, selectedId = if (select) server.id else settings.selectedId)
+        updated.requireUsable()
         require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(updated)).commit()) { "Không lưu được máy chủ. Hãy thử lại." }
     }
     fun deleteCustomDns(id: String) = synchronized(prefs) {

@@ -2,6 +2,18 @@
 
 Ứng dụng Android Kotlin (Android 10 trở lên) để lọc DNS cục bộ, quản lý luật và làm sạch link. Giao diện bằng tiếng Việt, dùng Android SDK trực tiếp, không cần tài khoản hoặc backend.
 
+## DNS 53 → TLS 853 và nhận định URL (0.4.0)
+
+Luồng **DNS hệ thống → PrivacyGuard qua UDP/TCP 53 → lọc tên miền → máy chủ đã chọn**. Vào **Cài đặt → Máy chủ DNS → Mã hóa DNS** để dùng DNS-over-TLS qua cổng **853**. TLS xác thực chứng chỉ và tên máy chủ; nếu lỗi, chỉ thử địa chỉ dự phòng của cùng cấu hình qua TLS, rồi báo truy vấn lỗi. Không tự gửi lại bằng DNS thường. Khi tắt mã hóa, dùng UDP/TCP và cổng DNS thường của cấu hình (mặc định 53).
+
+Máy chủ có sẵn đã có tên xác thực TLS. DNS tùy chỉnh vẫn kết nối bằng IP; thêm **Tên xác thực TLS** do nhà cung cấp công bố khi muốn mã hóa. Cổng 853 được cố định cho TLS, độc lập với cổng DNS thường. Lựa chọn được lưu và áp dụng cho truy vấn mới. Tính năng áp dụng khi VPN đang bật và ứng dụng dùng DNS hệ thống; app tự dùng DoH/DoT hoặc DNS riêng có thể đi vòng.
+
+- **Link → Phân tích URL**: nhận định từ tên miền, đường dẫn và query param, cùng lý do và giải thích từng tham số. `utm_*`/`gclid` gợi ý đo lường, không đủ để kết luận tải quảng cáo. Nhận định không tự tạo luật hoặc chặn yêu cầu.
+- **Phiên riêng tư → Yêu cầu trong phiên → Bật xem yêu cầu**: xem URL mà WebView cung cấp, tải lại/làm mới và chi tiết từng yêu cầu. Chỉ giữ 100 yêu cầu gần nhất trong bộ nhớ; giá trị và đường dẫn mặc định ẩn. Tắt tính năng, tạo phiên mới hoặc kết thúc phiên sẽ xóa danh sách. Không đọc headers/cookie/body, không ghi vào SQLite, SharedPreferences hoặc JSON xuất.
+- Chi tiết DNS giải thích rằng DNS chỉ thấy tên miền, không thấy query param của HTTPS. URL của các ứng dụng khác không được phân tích.
+
+[Giao diện và biên bản 0.4](docs/query-dns-tls.html): kiểm thử TLS bằng socket thật qua loopback, nhận định URL, dữ liệu phiên và bản in A4. Chưa chạy kiểm thử VPN/Chromium trên thiết bị thật.
+
 ## Chạy và kiểm tra
 
 Cần JDK 17 và Android SDK gồm `platforms;android-35`, `build-tools;35.0.0`, `platform-tools`. Đặt `ANDROID_HOME` tới SDK hoặc tạo `local.properties` với `sdk.dir=/đường/dẫn/SDK`. Gradle Wrapper 8.11.1 đã có trong repo và kiểm tra SHA-256 của bản phân phối.
@@ -15,7 +27,7 @@ Mở PrivacyGuard, chọn **Bật lọc DNS** và chấp nhận hộp thoại VP
 
 ## Chọn DNS và xem yêu cầu bị chặn/gặp lỗi (0.3.0)
 
-- **Cài đặt → Máy chủ DNS** (hoặc mục DNS trên Tổng quan): chọn Quad9, Cloudflare, Google hoặc AdGuard. Nhấn **+** ở góc trên để thêm DNS tùy chỉnh với tên, IP chính, IP dự phòng tùy chọn và cổng (mặc định 53). Hỗ trợ IP IPv4/IPv6; chưa hỗ trợ hostname hoặc URL DoH/DoT. Có sửa/xóa máy chủ đã thêm, tối đa 20 cấu hình.
+- **Cài đặt → Máy chủ DNS** (hoặc mục DNS trên Tổng quan): chọn Quad9, Cloudflare, Google hoặc AdGuard. Nhấn **+** để thêm tên, IP chính, IP dự phòng và cổng DNS thường (mặc định 53). Bản 0.4 bổ sung tên xác thực TLS, không nhận URL DoH/DoT làm địa chỉ kết nối. Có sửa/xóa, tối đa 20 cấu hình.
 - Lựa chọn được lưu trên thiết bị và áp dụng cho các truy vấn tiếp theo, không cần khởi động lại VPN. Chỉ dùng địa chỉ chính/dự phòng của cấu hình đã chọn. Mặc định là Quad9 `9.9.9.9` / `149.112.112.112`; bản này không còn tự chuyển sang nhà cung cấp Cloudflare khi Quad9 gặp lỗi.
 - Chạm số **Đã chặn** hoặc **Gặp lỗi** trên Tổng quan, hoặc hai mục tương ứng trong tab **Ứng dụng**. Danh sách có tìm kiếm, lọc theo ngày/app/trạng thái, phân trang và xuất kết quả. Cần bật nhật ký để có tên miền và truy vấn mới; bộ đếm cũ không khôi phục được chi tiết.
 - Chi tiết giải thích vì sao bị chặn, hoặc máy chủ chưa trả lời/đang gặp sự cố/từ chối yêu cầu. Có hướng xử lý và nút **Cho phép**, **Xem luật** hoặc **Đổi máy chủ DNS** phù hợp. Mã lỗi và tên package nằm trong **Chi tiết kỹ thuật**.
@@ -63,7 +75,9 @@ adb -s emulator-5554 shell appops set com.privacyguard.android ACTIVATE_VPN allo
 adb -s emulator-5554 shell am instrument -w com.privacyguard.android.test/com.privacyguard.android.MvpInstrumentation
 ```
 
-Trên thiết bị thật, cấp quyền VPN qua giao diện. Kiểm tra thêm: từ chối quyền; bật/dừng liên tiếp; thu hồi VPN; chuyển Wi-Fi/di động; DNS mã hóa; trang HTTPS có cookie/localStorage và phiên mới sau khi đóng/kill tiến trình. Xem [phạm vi và biên bản MVP](docs/mvp.html) và [kiến trúc](ARCHITECTURE.md).
+Kiểm thử TLS dùng socket thật qua loopback: xác nhận SNI, framing, sai hostname/chứng chỉ không tin cậy và không hạ xuống plaintext. Chứng chỉ `app/src/test/resources/dns-test.p12` là fixture công khai chỉ cho test, không được đóng gói vào APK. Kiểm thử WebView dùng callback giả lập và shadow ServiceWorkerController, không chạy Chromium/network thật.
+
+Trên thiết bị thật, cấp quyền VPN qua giao diện. Kiểm tra thêm: từ chối quyền; bật/dừng liên tiếp; thu hồi VPN; chuyển Wi-Fi/di động; DNS mã hóa; trang HTTPS có cookie/localStorage và phiên mới sau khi đóng/kill tiến trình. Xem [phạm vi và biên bản MVP](docs/mvp.html), [DNS/TLS và nhận định URL](docs/query-dns-tls.html) và [kiến trúc](ARCHITECTURE.md).
 
 ## Web prototype
 

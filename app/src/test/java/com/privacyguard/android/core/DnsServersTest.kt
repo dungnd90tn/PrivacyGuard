@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DnsServersTest {
+    @Test fun modeKeepsLocalInputSeparateFromTlsUpstreamAndRequiresAuthenticationName() {
+        val custom = DnsServers.custom("custom-tls", "TLS ở nhà", "192.168.1.1", port = 5353, tlsName = "DNS.Test.Example")
+        val settings = DnsSettings(custom.id, listOf(custom), DnsMode.TLS)
+        assertEquals(5353, settings.active.primary.port)
+        assertEquals(853, settings.upstream.single().port); assertEquals("dns.test.example", settings.upstream.single().tlsName)
+        val missing = DnsServers.custom("custom-plain", "Router", "192.168.1.1")
+        assertThrows(IllegalArgumentException::class.java) { DnsSettings(missing.id, listOf(missing), DnsMode.TLS).requireUsable() }
+        for (name in listOf("1.1.1.1", "tls://dns.test.example", "https://dns.test.example", "*.test.example", "test.example/path")) {
+            assertThrows(IllegalArgumentException::class.java) { DnsServers.custom("custom-invalid", "Invalid", "192.168.1.1", tlsName = name) }
+        }
+        assertTrue(DnsServers.presets.all { it.tlsName.isNotEmpty() })
+    }
     @Test fun numericIpv4Ipv6AndRouterAddressesAreAcceptedWithoutHostnameLookup() {
         assertEquals("1.1.1.1", DnsEndpoint.normalized(" 001.001.001.001 ").address)
         assertEquals(16, DnsEndpoint.normalized("2001:db8::53").bytes.size)

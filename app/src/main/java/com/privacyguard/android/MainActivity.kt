@@ -34,6 +34,9 @@ import com.privacyguard.android.core.Action
 import com.privacyguard.android.core.Category
 import com.privacyguard.android.core.DnsServer
 import com.privacyguard.android.core.DnsServers
+import com.privacyguard.android.core.DnsMode
+import com.privacyguard.android.core.UrlAnalysis
+import com.privacyguard.android.core.UrlAnalyzer
 import com.privacyguard.android.core.LinkCleaner
 import com.privacyguard.android.core.Outcome
 import com.privacyguard.android.core.Rules
@@ -69,6 +72,7 @@ class MainActivity : Activity() {
     private var pageLimit = PAGE_SIZE
     private var cleanerDraft = ""
     private var cleanedUrl: String? = null
+    private var urlAnalysis: UrlAnalysis? = null
     private var browserDraft = ""
     private var pendingExport: String? = null
     private var receiverRegistered = false
@@ -138,6 +142,7 @@ class MainActivity : Activity() {
     }
     override fun onDestroy() {
         closing = true; handler.removeCallbacksAndMessages(null)
+        cleanerDraft = ""; cleanedUrl = null; urlAnalysis = null; browserDraft = ""
         io.execute { store.close() }; io.shutdown(); super.onDestroy()
     }
     @Suppress("DEPRECATION")
@@ -244,7 +249,7 @@ class MainActivity : Activity() {
         }; hero.addView(toggle, LinearLayout.LayoutParams(-1, -2))
         hero.addView(ui.text("Lọc DNS trên thiết bị · không giải mã HTTPS", 11f, color = ui.muted).apply { gravity = Gravity.CENTER; setPadding(0, ui.dp(12), 0, 0) })
         val dns = ui.group(content)
-        val dnsRow = ui.listRow(dns, "Máy chủ DNS", store.dnsSettings.active.name, "globe") { openDns() }
+        val dnsRow = ui.listRow(dns, "Máy chủ DNS", dnsLabel(), "globe") { openDns() }
         ui.heading(content, "Hoạt động DNS")
         periodControl()
         val metricRow = ui.row()
@@ -274,7 +279,7 @@ class MainActivity : Activity() {
         ui.listRow(shortcuts, "Phiên duyệt riêng tư", "Cookie riêng, xóa dữ liệu khi kết thúc", "browser") { navigate("cleaner"); content.post { browserInput?.requestFocus() } }
         refreshUi = {
             val dnsSubtitle = (dnsRow.getChildAt(1) as LinearLayout).getChildAt(1) as TextView
-            dnsSubtitle.text = store.dnsSettings.active.name
+            dnsSubtitle.text = dnsLabel()
             val running = VpnState.status == VpnState.Status.RUNNING
             state.text = when (VpnState.status) { VpnState.Status.RUNNING -> "Đang bảo vệ"; VpnState.Status.STARTING -> "Đang kết nối…"; VpnState.Status.ERROR -> "Cần kiểm tra"; else -> "Sẵn sàng bảo vệ" }
             stateDetail.text = if (running) "Bộ lọc DNS đang hoạt động" else "Bật để bắt đầu quan sát DNS"
@@ -533,7 +538,7 @@ class MainActivity : Activity() {
         pageHeader("Cài đặt", "Dữ liệu và quyền riêng tư của bạn.")
         ui.heading(content, "Kết nối")
         val connection = ui.group(content)
-        ui.listRow(connection, "Máy chủ DNS", "Đang chọn ${store.dnsSettings.active.name} · đổi hoặc thêm máy chủ", "globe") { openDns() }
+        ui.listRow(connection, "Máy chủ DNS", dnsLabel() + " · đổi hoặc thêm máy chủ", "globe") { openDns() }
         ui.heading(content, "Dữ liệu trên thiết bị")
         val privacy = ui.group(content)
         val row = ui.listRow(privacy, "Nhật ký tên miền", "Lưu truy vấn để xem theo ứng dụng", "clock")
@@ -555,23 +560,38 @@ class MainActivity : Activity() {
         ui.heading(content, "Về PrivacyGuard")
         val about = ui.group(content)
         ui.listRow(about, "Phạm vi bảo vệ", "DNS qua VPN, IPv4 và IPv6", "shield") {
-            showInfo("Phạm vi bảo vệ", "Lọc DNS thường (UDP/TCP) gửi đến DNS của VPN. Lưu lượng khác đi trực tiếp.\n\nKhông giải mã HTTPS; DNS mã hóa (DoH/DoT) hoặc DNS tự chọn có thể bỏ qua bộ lọc. Danh sách tên miền là truy vấn DNS, không chứng minh app đã kết nối thành công.\n\nAndroid thường xử lý DNS qua hệ thống, không cung cấp app gốc. Các truy vấn này xuất hiện trong nhóm Chưa xác định ứng dụng.")
+            showInfo("Phạm vi bảo vệ", "DNS hệ thống gửi đến PrivacyGuard qua UDP/TCP 53. PrivacyGuard áp dụng luật trước khi gửi lên máy chủ đã chọn; bật mã hóa để dùng TLS 853. Lưu lượng khác đi trực tiếp.\n\nKhông giải mã HTTPS. App tự dùng DoH/DoT, DNS riêng hoặc IP trực tiếp có thể đi vòng. Danh sách tên miền là truy vấn DNS, không chứng minh app đã kết nối thành công.\n\nAndroid thường xử lý DNS qua hệ thống, không cung cấp app gốc. Các truy vấn này xuất hiện trong nhóm Chưa xác định ứng dụng.")
         }
         ui.separator(about, 68)
         ui.listRow(about, "Danh sách tracker", "Danh sách khởi đầu; chưa đầy đủ", "rules") { showInfo("Tên miền nhận diện", Rules.trackers.keys.joinToString("\n") + "\n\nTên miền dùng chung có thể ảnh hưởng chức năng thiết yếu. Bạn có thể tạo ngoại lệ để khôi phục kết nối.") }
         ui.separator(about, 68)
         ui.listRow(about, "Phiên duyệt riêng tư", "Cookie, cache và dữ liệu website riêng", "browser") { showInfo("Phiên riêng tư", "WebView có kho cookie riêng. Dữ liệu được xóa khi kết thúc và trước phiên mới. Chặn tracker bên thứ ba theo tên miền từ danh sách khởi đầu; không kiểm tra lại mọi redirect. Service worker không được truy cập mạng.\n\nTrang web và nhà mạng vẫn có thể thấy địa chỉ IP của bạn.") }
-        ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.3.0\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
+        ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.4.0\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
     }
     private fun openDns() {
         if (page != "dns") dnsReturnPage = page
         navigate("dns")
     }
+    private fun dnsLabel() = store.dnsSettings.let { "${it.active.name} · ${if (it.mode == DnsMode.TLS) "TLS 853" else "DNS thường"}" }
     private fun dnsPage() {
         pageHeader("Máy chủ DNS", "Dịch vụ giúp ứng dụng tìm địa chỉ để kết nối.", true, "KẾT NỐI", headerAction = { editCustomDns() }) { navigate(dnsReturnPage) }
-        val selected = store.dnsSettings.active
+        val configuration = store.dnsSettings
+        val selected = configuration.active
         val active = ui.card(content, "Đang chọn ${selected.name}", "Đổi máy chủ nếu kết nối chập chờn. Lựa chọn mới áp dụng cho các yêu cầu tiếp theo, không cần tắt và bật lại bảo vệ.")
-        active.addView(ui.text("DNS thường · chưa mã hóa", 12f, color = ui.muted))
+        active.addView(ui.text(if (configuration.mode == DnsMode.TLS) "DNS mã hóa · TLS cổng 853" else "DNS thường · chưa mã hóa", 12f, color = ui.muted))
+        runCatching { configuration.requireUsable() }.exceptionOrNull()?.let { active.addView(ui.text(it.message.orEmpty(), 13f, color = ui.orange)) }
+        val encryption = ui.group(content)
+        val encryptionRow = ui.listRow(encryption, "Mã hóa DNS", "PrivacyGuard gửi lên máy chủ qua TLS 853. Lỗi TLS sẽ được báo, không tự chuyển về DNS thường.", "shield", ui.accent)
+        val encryptionSwitch = Switch(this).apply {
+            contentDescription = "Mã hóa DNS qua TLS 853"
+            isChecked = configuration.mode == DnsMode.TLS
+            minHeight = ui.dp(48)
+            setOnCheckedChangeListener { _, checked ->
+                changeDns({ store.setDnsMode(if (checked) DnsMode.TLS else DnsMode.PLAIN) }, if (checked) "Đã bật DNS mã hóa qua TLS 853." else "Đã dùng DNS thường.")
+            }
+        }
+        encryptionRow.addView(encryptionSwitch)
+        content.addView(ui.text("Ứng dụng → PrivacyGuard: UDP/TCP 53\nPrivacyGuard lọc tên miền trước khi gửi lên máy chủ. DNS hệ thống dùng tuyến này khi bảo vệ đang bật. App tự dùng DNS riêng hoặc DoH có thể đi vòng.", 13f, color = ui.muted))
         val presets = ui.group(content)
         val custom = ui.group(content)
         val add = ui.button("Thêm DNS tùy chỉnh", true) { editCustomDns() }
@@ -581,13 +601,17 @@ class MainActivity : Activity() {
         refreshUi = {
             presets.removeAllViews(); custom.removeAllViews()
             val settings = store.dnsSettings
+            encryptionSwitch.isEnabled = !dnsSaving
             settings.servers.forEach { server ->
                 val parent = if (server.custom) custom else presets
                 if (parent.childCount > 0) ui.separator(parent, 68)
-                val row = ui.listRow(parent, server.name, "${server.description}\n${server.endpoints.joinToString(" · ") { it.display }}", "globe", ui.accent,
+                val addresses = if (settings.mode == DnsMode.TLS) server.endpoints.joinToString(" · ") { it.copy(port = 853).display } else server.endpoints.joinToString(" · ") { it.display }
+                val tls = if (settings.mode == DnsMode.TLS) "\n${server.tlsName.ifEmpty { "Cần thêm tên xác thực TLS" }}" else ""
+                val row = ui.listRow(parent, server.name, "${server.description}\n$addresses$tls", "globe", ui.accent,
                     if (settings.active.id == server.id) "Đang dùng" else null) {
                     if (!dnsSaving && settings.active.id != server.id) changeDns({ store.selectDns(server.id) }, "Đã chọn ${server.name}.")
                 }
+                ((row.getChildAt(1) as LinearLayout).getChildAt(1) as TextView).maxLines = 6
                 row.isEnabled = !dnsSaving; row.isSelected = settings.active.id == server.id
                 if (server.custom) {
                     row.getChildAt(row.childCount - 1).visibility = View.GONE
@@ -630,10 +654,14 @@ class MainActivity : Activity() {
         form.addView(ui.text("Địa chỉ dự phòng · không bắt buộc", 13f, true))
         val secondary = ui.field("Ví dụ: 1.0.0.1").apply { setText(existing?.secondary?.address.orEmpty()); contentDescription = "Địa chỉ IP dự phòng" }
         form.addView(secondary); ui.gap(form, 10)
-        form.addView(ui.text("Cổng · thường là 53", 13f, true))
+        form.addView(ui.text("Cổng DNS thường · mặc định 53", 13f, true))
         val port = ui.field("53").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER; setText(String.format(java.util.Locale.ROOT, "%d", existing?.primary?.port ?: 53)); contentDescription = "Cổng DNS" }
         form.addView(port)
-        form.addView(ui.text("Hỗ trợ DNS thường qua UDP/TCP. Chưa nhận tên máy chủ hoặc URL DNS mã hóa như https://…", 12f, color = ui.muted))
+        ui.gap(form, 10)
+        form.addView(ui.text("Tên xác thực TLS · nếu dùng mã hóa", 13f, true))
+        val tlsName = ui.field("Ví dụ: dns.quad9.net").apply { setText(existing?.tlsName.orEmpty()); contentDescription = "Tên xác thực TLS" }
+        form.addView(tlsName)
+        form.addView(ui.text("Bật mã hóa sẽ luôn dùng cổng 853. Nhập tên trên chứng chỉ do nhà cung cấp công bố; IP ở trên vẫn là địa chỉ kết nối. Không nhập URL https:// hay tls://.", 12f, color = ui.muted))
         val error = ui.text("", 13f, color = ui.red).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }; form.addView(error)
         val dialog = AlertDialog.Builder(this).setTitle(if (existing == null) "Thêm DNS tùy chỉnh" else "Sửa DNS tùy chỉnh")
             .setView(ScrollView(this).apply { addView(form) }).setNegativeButton("Hủy", null).setPositiveButton("Lưu và dùng", null).create()
@@ -642,7 +670,8 @@ class MainActivity : Activity() {
                 val validated = runCatching {
                     val number = if (port.text.isBlank()) 53 else port.text.toString().toIntOrNull()
                         ?: throw IllegalArgumentException("Cổng phải là số từ 1 đến 65535.")
-                    DnsServers.custom(existing?.id ?: "custom-${java.util.UUID.randomUUID()}", name.text.toString(), primary.text.toString(), secondary.text.toString(), number)
+                    DnsServers.custom(existing?.id ?: "custom-${java.util.UUID.randomUUID()}", name.text.toString(), primary.text.toString(), secondary.text.toString(), number, tlsName.text.toString())
+                        .also { server -> store.dnsSettings.copy(custom = store.dnsSettings.custom.filterNot { it.id == server.id } + server, selectedId = server.id).requireUsable() }
                 }
                 validated.onSuccess { server ->
                     dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).isEnabled = false
@@ -664,6 +693,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Hủy", null).setPositiveButton("Xóa") { _, _ -> changeDns({ store.deleteCustomDns(server.id) }, "Đã xóa máy chủ.") }.show()
     }
     private fun requestDetails(event: GuardEvent, scope: TrafficScope) {
+        var dialog: AlertDialog? = null
         val words = RequestText.forEvent(event)
         val detail = ui.column(20)
         detail.addView(ui.text(words.title, 22f, true, outcomeColor(event.outcome)))
@@ -671,6 +701,10 @@ class MainActivity : Activity() {
         detail.addView(ui.text("${appName(event.app)} · ${time(event.time, "dd/MM HH:mm")}", 13f, color = ui.muted)); ui.gap(detail, 12)
         detail.addView(ui.text(words.explanation, 15f)); ui.gap(detail, 10)
         detail.addView(ui.text("Bạn có thể làm gì?", 16f, true)); detail.addView(ui.text(words.suggestion, 14f, color = ui.muted))
+        ui.gap(detail, 12)
+        detail.addView(ui.text("URL và tham số", 16f, true))
+        detail.addView(ui.text("DNS chỉ cho biết tên miền, không chứa đường dẫn hoặc query param của HTTPS. Phân tích URL bạn có trong Link sạch hoặc bật xem yêu cầu trong phiên riêng tư.", 13f, color = ui.muted))
+        detail.addView(ui.button("Phân tích URL") { dialog?.dismiss(); navigate("cleaner") })
         if (event.outcome == Outcome.BLOCKED) {
             ui.gap(detail, 12)
             detail.addView(ui.text("Phạm vi luật: ${if (scope is TrafficScope.App) appName(scope.packageName) else "Tất cả ứng dụng"}", 14f, color = ui.accent))
@@ -688,7 +722,7 @@ class MainActivity : Activity() {
             Outcome.FAILED -> builder.setPositiveButton("Đổi máy chủ DNS") { _, _ -> openDns() }
             Outcome.FORWARDED -> builder.setPositiveButton("Chặn") { _, _ -> saveDomainRule(event.domain, scope, Action.BLOCK) }
         }
-        builder.show()
+        dialog = builder.show()
     }
 
     private fun showInfo(title: String, body: String) = AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton("Đóng", null).show()
@@ -756,11 +790,20 @@ class MainActivity : Activity() {
             try { val cleaned = LinkCleaner.clean(cleanerDraft, store.customParams); showResult(cleaned.url, cleaned.removed) }
             catch (e: IllegalArgumentException) { cleanedUrl = null; actions.removeAllViews(); result.text = e.message }
         })
+        val analysisPanel = ui.column()
+        cleaner.addView(ui.button("Phân tích URL") {
+            urlAnalysis = null; analysisPanel.removeAllViews()
+            runCatching { UrlAnalyzer.analyze(input.text.toString()) }.onSuccess { analysis ->
+                urlAnalysis = analysis; showUrlAnalysis(ui, analysisPanel, analysis)
+            }.onFailure { analysisPanel.addView(ui.text(it.message ?: "Không đọc được URL.", 14f, color = ui.red)) }
+        })
+        cleaner.addView(analysisPanel)
+        urlAnalysis?.let { showUrlAnalysis(ui, analysisPanel, it) }
         ui.gap(cleaner, 12); cleaner.addView(result); cleaner.addView(actions)
         cleanedUrl?.let { url -> showResult(url, runCatching { LinkCleaner.clean(cleanerDraft, store.customParams).removed }.getOrDefault(emptyList())) }
         input.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { cleanerDraft = s.toString(); cleanedUrl = null; result.text = ""; actions.removeAllViews() }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { cleanerDraft = s.toString(); cleanedUrl = null; urlAnalysis = null; analysisPanel.removeAllViews(); result.text = ""; actions.removeAllViews() }
             override fun afterTextChanged(s: android.text.Editable?) = Unit
         })
         val custom = ui.card(content, "Tham số tùy chỉnh", "Phân cách bằng dấu phẩy; dấu * ở cuối để khớp tiền tố, ví dụ ref, campaign_*. Hãy kiểm tra link trước khi chia sẻ.")

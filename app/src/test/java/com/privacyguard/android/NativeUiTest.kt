@@ -40,6 +40,53 @@ import java.time.LocalDate
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 class NativeUiTest {
+    @Test fun encryptedDnsModePersistsAndCustomDnsRequiresATlsName() {
+        fixture(); click("Cài đặt"); click("Máy chủ DNS")
+        val toggle = views(controller!!.get().window.decorView).filterIsInstance<android.widget.Switch>().single()
+        toggle.performClick(); idle()
+        await { GuardStore(context).use { it.dnsSettings.mode == com.privacyguard.android.core.DnsMode.TLS } && texts().contains("DNS mã hóa · TLS cổng 853") }
+        assertTrue(texts().any { it.contains("9.9.9.9:853") })
+        assertTrue(texts().any { it.contains("Ứng dụng → PrivacyGuard: UDP/TCP 53") })
+        assertTrue(views(controller!!.get().window.decorView).filterIsInstance<TextView>().single { it.text.toString() == "Mã hóa DNS" }.isShown)
+        capture("dns-tls-light", 390, 844)
+        GuardStore(context).use { store ->
+            val custom = com.privacyguard.android.core.DnsServers.custom("custom-no-tls", "Router", "192.168.1.1")
+            assertThrows(IllegalArgumentException::class.java) { store.saveCustomDns(custom) }
+            assertEquals("quad9", store.dnsSettings.active.id); assertTrue(store.dnsSettings.custom.isEmpty())
+            store.selectDns("cloudflare")
+            assertEquals(com.privacyguard.android.core.DnsMode.TLS, store.dnsSettings.mode)
+            assertEquals(853, store.dnsSettings.upstream.first().port)
+        }
+        controller!!.get().recreate(); idle()
+        await { texts().contains("DNS mã hóa · TLS cổng 853") }
+        assertTrue(texts().any { it.contains("one.one.one.one") })
+    }
+    @Test fun urlInferenceMasksValuesResetsOnEditingAndNeverEntersHistoryOrExports() {
+        fixture(); click("Link")
+        val input = views(controller!!.get().window.decorView).filterIsInstance<EditText>().first()
+        val secret = "private-canary-72"
+        input.setText("https://shop.example.com/private/path?utm_source=$secret&token=$secret")
+        click("Phân tích URL")
+        assertTrue(texts().contains("Có dấu hiệu đo lường"))
+        assertTrue(texts().contains("Giá trị: đã ẩn")); assertFalse(texts().any { it == "Giá trị: $secret" })
+        assertFalse(texts().any { it == "Đường dẫn: /private/path" })
+        val scroll = views(controller!!.get().window.decorView).filterIsInstance<android.widget.ScrollView>().first()
+        capture("url-analysis-light", 390, 844)
+        scroll.scrollTo(0, 350); capture("url-parameters-light", 390, 844)
+        click("Hiện đường dẫn và giá trị")
+        assertTrue(texts().contains("Giá trị: $secret")); assertTrue(texts().contains("Đường dẫn: /private/path"))
+        click("Ẩn đường dẫn và giá trị"); assertFalse(texts().contains("Giá trị: $secret"))
+        GuardStore(context).use { store ->
+            assertEquals(221, store.events().size); assertEquals(221L, store.counters().sumOf { it.count })
+            assertFalse(store.export().contains(secret))
+        }
+        assertFalse(context.getSharedPreferences("privacyguard", android.content.Context.MODE_PRIVATE).all.toString().contains(secret))
+        input.setText("https://shop.example.com/?q=plain")
+        assertFalse(texts().contains("Có dấu hiệu đo lường")); assertFalse(texts().contains("Hiện đường dẫn và giá trị"))
+        click("Phân tích URL"); assertTrue(texts().contains("Chưa đủ dấu hiệu"))
+        controller!!.get().recreate(); idle(); await { texts().any { it.contains("Link gọn") } }
+        assertFalse(texts().contains("Chưa đủ dấu hiệu"))
+    }
     private var controller: ActivityController<MainActivity>? = null
     private val context get() = RuntimeEnvironment.getApplication()
     private val chrome = "com.example.chrome"

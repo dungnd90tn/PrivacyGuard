@@ -147,6 +147,8 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 
 `app/src/main/res/` has a launcher icon, base theme, strings, and backup exclusions. Native layouts are constructed programmatically with `Ui.kt`; no AndroidX runtime is used. Version 0.3 adds persisted DNS profiles (`DnsSettingsCodec.kt`, `core/DnsServers.kt`) and protected UDP/TCP forwarding (`core/DnsForwarder.kt`), with plain-language request details (`RequestText.kt`). See `docs/dns-requests.html`. Version 0.2 uses blue light/dark palettes and persistent bottom tabs; `Traffic.kt` filters the complete retained history and separates All/Unknown/package scopes. See `docs/mobile-redesign.html` for native render evidence and tests. Policies/counters are stored by `GuardStore.kt`, and platform-independent DNS/TCP processing lives in `core/DnsFilter.kt` and `core/TcpDns.kt`.
 
+Native version 0.4 adds optional authenticated DNS-over-TLS on upstream port 853, with VPN DNS input still on UDP/TCP 53. `core/UrlAnalysis.kt` makes display-only URL/query inferences; `RequestSession` is an opt-in, bounded process-memory journal for the private browser. Never persist URL/path/query values to DNS events, preferences or exports; never use query inferences as blocking policy. See `docs/query-dns-tls.html` for evidence and limits. Test TLS certificates live in test resources only; production uses platform trust roots.
+
 ### `prototype-web/` — web prototype (Node ≥ 20, zero dependencies)
 
 - `server.mjs` — static file server with an explicit allowlisted asset map (no directory traversal), restrictive security headers (CSP, `X-Content-Type-Options`, `Referrer-Policy`), binds to `127.0.0.1` unless `HOST` is set.

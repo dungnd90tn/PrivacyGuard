@@ -196,8 +196,7 @@ class DnsVpnService : VpnService() {
             stopped = { closed.get() }
         )
         private fun forward(query: ByteArray): ByteArray? {
-            val selected = store.dnsSettings.active
-            return DnsForwarder.resolve(query, selected.endpoints, transport::exchange)
+            return DnsForwarder.resolve(query, store.dnsSettings, transport::exchange)
         }
 
         private fun fail() {

@@ -4,6 +4,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DnsForwarderTest {
+    @Test fun encryptedSettingsUseOnlyTls853AndNeverDowngradeOnFailures() {
+        val settings = DnsSettings("cloudflare", mode = DnsMode.TLS)
+        val calls = mutableListOf<DnsEndpoint>()
+        assertNull(DnsForwarder.resolve(query, settings) { _, endpoint, protocol ->
+            assertEquals(DnsProtocol.TLS, protocol); assertEquals(853, endpoint.port)
+            assertEquals("one.one.one.one", endpoint.tlsName); calls += endpoint; null
+        })
+        assertEquals(listOf("1.1.1.1", "1.0.0.1"), calls.map { it.address })
+        calls.clear()
+        assertNull(DnsForwarder.resolve(query, settings) { _, endpoint, protocol ->
+            assertEquals(DnsProtocol.TLS, protocol); calls += endpoint; reply().apply { this[2] = (this[2].toInt() or 2).toByte() }
+        })
+        assertEquals(2, calls.size)
+    }
+    @Test fun blockedQueriesAreNotForwardedAndTlsFailuresAreFriendlyDnsErrors() {
+        val ads = dnsQuery("ads.example.com")
+        val blocked = DnsFilter.resolve(ads, null, Policy()) { fail("Filtering must happen before TLS"); null }!!
+        assertEquals(Outcome.BLOCKED, blocked.outcome)
+        val failed = DnsFilter.resolve(query, null, Policy()) { DnsForwarder.resolve(it, DnsSettings(mode = DnsMode.TLS)) { _, _, _ -> null } }!!
+        assertEquals(Outcome.FAILED, failed.outcome); assertEquals(2, Packets.u16(failed.response, 2) and 15)
+    }
     private val query = dnsQuery("api.example.com")
     private val endpoints = DnsSettings("cloudflare").active.endpoints
     private fun reply(code: Int = 0) = Packets.dnsError(query, Packets.question(query)!!, code)
