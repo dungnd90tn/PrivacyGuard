@@ -130,7 +130,7 @@ class DnsVpnService : VpnService() {
                     if (udp != null && udp.destinationPort == 53 && isDns(udp.destination)) {
                         val app = owner(OsConstants.IPPROTO_UDP, udp.source, udp.sourcePort, udp.destination, udp.destinationPort)
                         submit(udpWorkers, {
-                            val result = DnsFilter.resolve(udp.payload, app, store.policy, ::forward) ?: return@submit
+                            val result = DnsFilter.resolveDetailed(udp.payload, app, store.policy, ::forward) ?: return@submit
                             write(listOf(Packets.udpReply(udp, result.response)), listOf(result), app)
                         }, {
                             val question = Packets.question(udp.payload) ?: return@submit
@@ -144,7 +144,7 @@ class DnsVpnService : VpnService() {
                         val app = owner(OsConstants.IPPROTO_TCP, packet.source, packet.sourcePort, packet.destination, packet.destinationPort)
                         submit(tcpWorker, {
                             val replies = tcp.accept(packet, android.os.SystemClock.elapsedRealtime()) { query ->
-                                DnsFilter.resolve(query, app, store.policy, ::forward)
+                                DnsFilter.resolveDetailed(query, app, store.policy, ::forward)
                             }
                             write(replies.packets, replies.results, app)
                         }, { write(listOf(TcpDns.reply(packet, packet.acknowledgment, 0, TcpDns.RST)), emptyList(), app) })
@@ -195,8 +195,8 @@ class DnsVpnService : VpnService() {
             register = ::track, unregister = { socket -> synchronized(sockets) { sockets.remove(socket) } },
             stopped = { closed.get() }
         )
-        private fun forward(query: ByteArray): ByteArray? {
-            return DnsForwarder.resolve(query, store.dnsSettings, transport::exchange)
+        private fun forward(query: ByteArray): com.privacyguard.android.core.DnsUpstreamResult {
+            return DnsForwarder.resolveDetailed(query, store.dnsSettings, transport::exchange)
         }
 
         private fun fail() {

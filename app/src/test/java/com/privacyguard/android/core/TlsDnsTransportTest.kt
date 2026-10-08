@@ -49,7 +49,7 @@ class TlsDnsTransportTest {
                 }
             }
             var protected = false; var registered = 0; var unregistered = 0
-            val transport = SocketDnsTransport({ fail("TLS must never use UDP"); false }, { socket -> assertFalse(socket.isConnected); protected = true; true },
+            val transport = SocketDnsTransport({ fail("TLS must never use UDP"); false }, { socket -> assertTrue(socket.isBound); assertTrue(socket.localPort > 0); assertFalse(socket.isConnected); protected = true; true },
                 register = { registered++ }, unregister = { unregistered++ }, timeoutMs = 3000, tlsFactory = trustedClient)
             val endpoint = DnsEndpoint("127.0.0.1", server.localPort, "dns.test.example")
             assertArrayEquals(answer, DnsForwarder.resolve(query, listOf(endpoint), transport::exchange))
@@ -72,7 +72,9 @@ class TlsDnsTransportTest {
                 }
             }
             val transport = SocketDnsTransport({ fail("No plaintext fallback"); false }, { true }, timeoutMs = 3000, tlsFactory = factory)
-            assertNull(DnsForwarder.resolve(query, listOf(DnsEndpoint("127.0.0.1", server.localPort, name)), transport::exchange))
+            val result = DnsForwarder.resolveDetailed(query, listOf(DnsEndpoint("127.0.0.1", server.localPort, name)), transport::exchange)
+            assertNull(result.response); assertEquals(DnsFailureKind.TLS_AUTHENTICATION, result.failures.single().kind)
+            assertEquals(DnsStage.TLS_HANDSHAKE, result.failures.single().stage)
             received.get(5, TimeUnit.SECONDS); assertFalse(receivedDns.get())
         } } finally { work.shutdownNow() }
     }

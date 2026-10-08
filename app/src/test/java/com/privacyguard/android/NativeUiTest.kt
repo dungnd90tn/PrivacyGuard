@@ -40,6 +40,73 @@ import java.time.LocalDate
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 class NativeUiTest {
+    @Test fun detailedDnsFailuresKeepTheirHistoricalResolverAndRespectLoggingOptIn() {
+        fixture()
+        val failure = com.privacyguard.android.core.DnsFailure(com.privacyguard.android.core.DnsFailureKind.VPN_PROTECTION,
+            com.privacyguard.android.core.DnsStage.PROTECT, "9.9.9.9:853", com.privacyguard.android.core.DnsProtocol.TLS, "dns.quad9.net", timeoutMs = 1500)
+        val result = com.privacyguard.android.core.DnsResult(byteArrayOf(), com.privacyguard.android.core.Decision("diag.example.com", Category.UNKNOWN, Action.ALLOW,
+            "Không nhận được phản hồi DNS hợp lệ"), Outcome.FAILED, listOf(failure), 28)
+        GuardStore(context).use { store ->
+            store.record(result, chrome); store.selectDns("cloudflare")
+            val event = store.events().first()
+            assertEquals(listOf(failure), DnsFailureCodec.decode(event.reason)!!.attempts)
+            assertEquals(222L, store.counters().sumOf { it.count })
+            assertTrue(store.export().contains("DNS_DIAGNOSTIC_V1"))
+        }
+        controller!!.get().recreate(); idle(); await { texts().any { it.startsWith("Cập nhật") } }
+        click("Xem yêu cầu Gặp lỗi"); click("diag.example.com")
+        val detail = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(texts(detail.window!!.decorView).contains("Chưa tạo được kết nối DNS"))
+        assertFalse(texts(detail.window!!.decorView).any { it.contains("DNS_DIAGNOSTIC") })
+        captureDialog("dns-error-friendly-041", detail)
+        views(detail.window!!.decorView).filterIsInstance<android.widget.Button>().single { it.text.toString() == "Chi tiết kỹ thuật" }.performClick(); idle()
+        val technical = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(texts(technical.window!!.decorView).any { it.contains("9.9.9.9:853") && it.contains("PROTECT") && it.contains("AAAA (IPv6)") })
+        assertFalse(texts(technical.window!!.decorView).any { it.contains("one.one.one.one") })
+        captureDialog("dns-error-technical-041", technical)
+        GuardStore(context).use { store ->
+            store.detailed = false; store.record(result, chrome)
+            assertTrue(store.events().isEmpty()); assertEquals(223L, store.counters().sumOf { it.count })
+            assertEquals("cloudflare", store.dnsSettings.active.id)
+        }
+    }
+    @Test fun controlsHaveRoomOnPhoneLargeTextAndHdpiLayouts() {
+        fixture()
+        for ((qualifiers, font, width, height, suffix) in listOf(
+            SpacingLayout("w390dp-h844dp-port-mdpi", 1f, 390, 844, "phone"),
+            SpacingLayout("w320dp-h780dp-port-night-mdpi", 1.3f, 320, 780, "compact-large-text"),
+            SpacingLayout("w390dp-h844dp-port-notnight-hdpi", 1f, 585, 1266, "hdpi")
+        )) {
+            RuntimeEnvironment.setFontScale(font); RuntimeEnvironment.setQualifiers(qualifiers)
+            controller!!.get().recreate(); idle(); await { texts().any { it.startsWith("Cập nhật") } }
+            click("Link"); capture("cleaner-spacing-$suffix", width, height)
+            if (suffix == "compact-large-text") assertTrue(texts().contains("Ứng\ndụng"))
+            auditControlSpacing(controller!!.get().window.decorView)
+            click("Luật"); capture("rules-spacing-$suffix", width, height)
+            auditControlSpacing(controller!!.get().window.decorView)
+            click("Cài đặt"); click("Máy chủ DNS"); capture("dns-spacing-$suffix", width, height)
+            auditControlSpacing(controller!!.get().window.decorView)
+            click("Thêm DNS tùy chỉnh")
+            val form = ShadowAlertDialog.getLatestAlertDialog()
+            captureDialog("dns-form-spacing-$suffix", form, width, height)
+            val body = views(form.window!!.decorView).filterIsInstance<android.widget.ScrollView>().first().getChildAt(0)
+            auditControlSpacing(body)
+            form.dismiss(); idle(); click("Tổng quan")
+        }
+    }
+    private data class SpacingLayout(val qualifiers: String, val font: Float, val width: Int, val height: Int, val suffix: String)
+    private fun auditControlSpacing(root: View) {
+        val minimum = (8 * context.resources.displayMetrics.density).toInt()
+        views(root).filterIsInstance<android.widget.Button>().filter { it.isShown }.forEach {
+            assertTrue("Button '${it.text}' must have a usable touch height", it.height >= (48 * context.resources.displayMetrics.density).toInt())
+        }
+        views(root).filterIsInstance<android.widget.LinearLayout>().filter { it.orientation == android.widget.LinearLayout.VERTICAL }.forEach { parent ->
+            val controls = (0 until parent.childCount).map { parent.getChildAt(it) }.filter { it.isShown && (it is android.widget.Button || it is EditText || it is android.widget.Spinner) }
+            controls.zipWithNext().forEach { (a, b) ->
+                assertTrue("Controls '${(a as? TextView)?.text}' and '${(b as? TextView)?.text}' need a visible gap", b.top - a.bottom >= minimum)
+            }
+        }
+    }
     @Test fun encryptedDnsModePersistsAndCustomDnsRequiresATlsName() {
         fixture(); click("Cài đặt"); click("Máy chủ DNS")
         val toggle = views(controller!!.get().window.decorView).filterIsInstance<android.widget.Switch>().single()
@@ -381,17 +448,18 @@ class NativeUiTest {
         }
     }
 
-    private fun captureDialog(name: String, dialog: android.app.AlertDialog) {
-        val width = 390; val height = 844
+    private fun captureDialog(name: String, dialog: android.app.AlertDialog, width: Int = 390, height: Int = 844) {
         val bitmap = Bitmap.createBitmap(width, height + 24, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val activity = controller!!.get().window.decorView
         activity.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)); activity.layout(0, 0, width, height); activity.draw(canvas)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), Paint().apply { color = Color.argb(110, 0, 0, 0) })
         val decor = dialog.window!!.decorView
-        decor.forceLayout(); decor.measure(View.MeasureSpec.makeMeasureSpec(width - 32, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height - 80, View.MeasureSpec.AT_MOST))
+        val density = context.resources.displayMetrics.density
+        val inset = (16 * density).toInt()
+        decor.forceLayout(); decor.measure(View.MeasureSpec.makeMeasureSpec(width - inset * 2, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height - (80 * density).toInt(), View.MeasureSpec.AT_MOST))
         decor.layout(0, 0, decor.measuredWidth, decor.measuredHeight)
-        canvas.save(); canvas.translate(16f, (height - decor.measuredHeight) / 2f); decor.draw(canvas); canvas.restore()
+        canvas.save(); canvas.translate(inset.toFloat(), (height - decor.measuredHeight) / 2f); decor.draw(canvas); canvas.restore()
         canvas.drawRect(0f, height.toFloat(), width.toFloat(), height + 24f, Paint().apply { color = Color.WHITE })
         canvas.drawText("NATIVE ANDROID UI · TEST FIXTURE DATA · SDK 35", 8f, height + 15f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(70, 78, 90); textSize = 10f })
         File("build/ui-previews").apply { mkdirs() }.resolve("$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()

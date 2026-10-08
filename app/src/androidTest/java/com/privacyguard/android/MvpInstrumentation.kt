@@ -28,6 +28,13 @@ class MvpInstrumentation : Instrumentation() {
         try {
             case("policy persistence, duplicate replacement and recovery") { policyStorage() }
             case("counter accuracy, opt-in history and bounded retention") { historyStorage() }
+            case("bound TCP socket has a native descriptor before VPN protection") {
+                Socket().use { socket ->
+                    socket.bind(InetSocketAddress(0))
+                    check(!socket.isConnected)
+                    android.os.ParcelFileDescriptor.fromSocket(socket).use { check(it.fileDescriptor.valid()) }
+                }
+            }
             val activity = startActivitySync(Intent(targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitForIdleSync()
             case("cleaner UI success and invalid URL") { cleanerUi(activity) }

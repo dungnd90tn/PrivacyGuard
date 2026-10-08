@@ -147,7 +147,7 @@ class GuardStore(context: Context) : AutoCloseable {
                 arrayOf(day, app.orEmpty(), result.decision.category.name, result.outcome.name))
             if (detailed) db.insertOrThrow("events", null, ContentValues().apply {
                 put("time", now); put("app", app.orEmpty()); put("domain", result.decision.domain)
-                put("category", result.decision.category.name); put("outcome", result.outcome.name); put("reason", result.decision.reason)
+                put("category", result.decision.category.name); put("outcome", result.outcome.name); put("reason", DnsFailureCodec.encode(result))
             })
             prune(db, now)
             db.setTransactionSuccessful()

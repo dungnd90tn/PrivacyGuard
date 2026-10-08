@@ -63,8 +63,8 @@ class PrivateBrowserActivity : Activity() {
         address = ui.field("https://example.com").apply { setText(pendingUrl) }
         toolbar.addView(address)
         val buttons = ui.row()
-        buttons.addView(ui.button("Mở", true) { navigate(address.text.toString()) }, LinearLayout.LayoutParams(0, -2, 1f))
-        buttons.addView(ui.button("Kết thúc phiên") { endSession() }, LinearLayout.LayoutParams(0, -2, 1f))
+        buttons.addView(ui.button("Mở", true) { navigate(address.text.toString()) }, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = ui.dp(10); bottomMargin = ui.dp(4); marginEnd = ui.dp(6) })
+        buttons.addView(ui.button("Kết thúc phiên") { endSession() }, LinearLayout.LayoutParams(0, -2, 1f).apply { topMargin = ui.dp(10); bottomMargin = ui.dp(4); marginStart = ui.dp(6) })
         toolbar.addView(buttons)
         toolbar.addView(ui.button("Yêu cầu trong phiên") { showRequests() })
         status = ui.text("Đang xóa dữ liệu phiên trước…", 12f, color = ui.muted).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE; isSaveEnabled = false }

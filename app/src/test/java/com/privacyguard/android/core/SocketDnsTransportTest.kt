@@ -52,7 +52,7 @@ class SocketDnsTransportTest {
                     }
                 }
                 var udpProtected = false; var tcpProtected = false
-                val transport = SocketDnsTransport({ udpProtected = true; true }, { socket -> assertFalse(socket.isConnected); tcpProtected = true; true })
+                val transport = SocketDnsTransport({ udpProtected = true; true }, { socket -> assertTrue(socket.isBound); assertTrue(socket.localPort > 0); assertFalse(socket.isConnected); tcpProtected = true; true })
                 val result = DnsForwarder.resolve(query, listOf(DnsEndpoint("127.0.0.1", tcp.localPort)), transport::exchange)
                 assertArrayEquals(answer, result); assertArrayEquals(query, tcpWork.get(4, TimeUnit.SECONDS)); udpWork.get(4, TimeUnit.SECONDS)
                 assertTrue(udpProtected); assertTrue(tcpProtected)
@@ -63,10 +63,28 @@ class SocketDnsTransportTest {
         var calls = 0
         val transport = SocketDnsTransport({ calls++; false }, { calls++; false }, timeoutMs = 100)
         val endpoint = DnsEndpoint("127.0.0.1", 5353)
-        assertThrows(IllegalStateException::class.java) { transport.exchange(query, endpoint, DnsProtocol.UDP) }
-        assertThrows(IllegalStateException::class.java) { transport.exchange(query, endpoint, DnsProtocol.TCP) }
+        for (protocol in listOf(DnsProtocol.UDP, DnsProtocol.TCP)) {
+            val error = assertThrows(DnsTransportException::class.java) { transport.exchange(query, endpoint, protocol) }
+            assertEquals(DnsFailureKind.VPN_PROTECTION, error.kind); assertEquals(DnsStage.PROTECT, error.stage)
+        }
         assertEquals(2, calls)
         val stopped = SocketDnsTransport({ fail("Must not open a stopped session"); true }, { true }, stopped = { true })
         assertNull(stopped.exchange(query, endpoint, DnsProtocol.UDP))
+    }
+    @Test fun partialTcpReplyIsDiagnosedAtReadStageRatherThanReportedAsTimeout() {
+        val executor = Executors.newSingleThreadExecutor()
+        try { ServerSocket(0, 1, loopback).use { server ->
+            server.soTimeout = 3000
+            val worker = executor.submit {
+                server.accept().use { socket ->
+                    val input = DataInputStream(socket.inputStream); val request = ByteArray(input.readUnsignedShort()); input.readFully(request)
+                    val output = DataOutputStream(socket.outputStream); output.writeShort(answer.size); output.write(answer, 0, 5); output.flush()
+                }
+            }
+            val transport = SocketDnsTransport({ true }, { socket -> assertTrue(socket.isBound); assertFalse(socket.isConnected); true })
+            val error = assertThrows(DnsTransportException::class.java) { transport.exchange(query, DnsEndpoint("127.0.0.1", server.localPort), DnsProtocol.TCP) }
+            assertEquals(DnsFailureKind.INCOMPLETE_RESPONSE, error.kind); assertEquals(DnsStage.READ, error.stage)
+            worker.get(4, TimeUnit.SECONDS)
+        } } finally { executor.shutdownNow() }
     }
 }

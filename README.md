@@ -1,70 +1,103 @@
-# PrivacyGuard Android MVP
+# PrivacyGuard
 
-Ứng dụng Android Kotlin (Android 10 trở lên) để lọc DNS cục bộ, quản lý luật và làm sạch link. Giao diện bằng tiếng Việt, dùng Android SDK trực tiếp, không cần tài khoản hoặc backend.
+PrivacyGuard là ứng dụng Android giúp lọc DNS, quản lý quyền cho phép/chặn tên miền, quan sát truy vấn và giảm dấu vết khi chia sẻ link. Dự án hiện ở giai đoạn MVP, viết bằng Kotlin với Android SDK trực tiếp, hỗ trợ Android 10 trở lên.
 
-## DNS 53 → TLS 853 và nhận định URL (0.4.0)
+Ứng dụng có giao diện tiếng Việt, chế độ sáng/tối và lưu cấu hình, thống kê trên thiết bị. Không cần tài khoản hoặc backend; truy vấn được phép được gửi tới máy chủ DNS người dùng chọn.
 
-Luồng **DNS hệ thống → PrivacyGuard qua UDP/TCP 53 → lọc tên miền → máy chủ đã chọn**. Vào **Cài đặt → Máy chủ DNS → Mã hóa DNS** để dùng DNS-over-TLS qua cổng **853**. TLS xác thực chứng chỉ và tên máy chủ; nếu lỗi, chỉ thử địa chỉ dự phòng của cùng cấu hình qua TLS, rồi báo truy vấn lỗi. Không tự gửi lại bằng DNS thường. Khi tắt mã hóa, dùng UDP/TCP và cổng DNS thường của cấu hình (mặc định 53).
+## Tính năng
 
-Máy chủ có sẵn đã có tên xác thực TLS. DNS tùy chỉnh vẫn kết nối bằng IP; thêm **Tên xác thực TLS** do nhà cung cấp công bố khi muốn mã hóa. Cổng 853 được cố định cho TLS, độc lập với cổng DNS thường. Lựa chọn được lưu và áp dụng cho truy vấn mới. Tính năng áp dụng khi VPN đang bật và ứng dụng dùng DNS hệ thống; app tự dùng DoH/DoT hoặc DNS riêng có thể đi vòng.
+| Chức năng | Khả năng hiện có |
+| --- | --- |
+| Lọc DNS | VPN cục bộ xử lý DNS hệ thống qua UDP/TCP 53 trên IPv4/IPv6, áp dụng luật trước khi chuyển tiếp. |
+| Máy chủ DNS | Chọn Quad9, Cloudflare, Google, AdGuard hoặc thêm cấu hình riêng; hỗ trợ DNS-over-TLS qua cổng 853. |
+| Luật | Cho phép/chặn tên miền exact hoặc wildcard, cấu hình nhóm toàn cục/theo ứng dụng và thử quyết định mà không gửi truy vấn mạng. |
+| Quan sát | Tổng quan, tên miền theo ứng dụng, danh sách truy vấn bị chặn/gặp lỗi, tìm kiếm, bộ lọc và xuất JSON. |
+| Link sạch | Bỏ tham số theo dõi, thêm tham số tùy chỉnh, sao chép/chia sẻ và nhận link qua Android Share. |
+| Phân tích URL | Hiển thị nhận định và lý do từ tên miền, đường dẫn, query param; người dùng tự quyết định cách xử lý. |
+| Phiên riêng tư | WebView HTTPS trong tiến trình và kho dữ liệu riêng, lọc tracker bên thứ ba, xóa dữ liệu khi kết thúc phiên. |
 
-- **Link → Phân tích URL**: nhận định từ tên miền, đường dẫn và query param, cùng lý do và giải thích từng tham số. `utm_*`/`gclid` gợi ý đo lường, không đủ để kết luận tải quảng cáo. Nhận định không tự tạo luật hoặc chặn yêu cầu.
-- **Phiên riêng tư → Yêu cầu trong phiên → Bật xem yêu cầu**: xem URL mà WebView cung cấp, tải lại/làm mới và chi tiết từng yêu cầu. Chỉ giữ 100 yêu cầu gần nhất trong bộ nhớ; giá trị và đường dẫn mặc định ẩn. Tắt tính năng, tạo phiên mới hoặc kết thúc phiên sẽ xóa danh sách. Không đọc headers/cookie/body, không ghi vào SQLite, SharedPreferences hoặc JSON xuất.
-- Chi tiết DNS giải thích rằng DNS chỉ thấy tên miền, không thấy query param của HTTPS. URL của các ứng dụng khác không được phân tích.
+Ứng dụng dùng adaptive icon từ logo dự án, có lớp monochrome cho launcher Android 13 trở lên.
 
-[Giao diện và biên bản 0.4](docs/query-dns-tls.html): kiểm thử TLS bằng socket thật qua loopback, nhận định URL, dữ liệu phiên và bản in A4. Chưa chạy kiểm thử VPN/Chromium trên thiết bị thật.
+## Build và chạy Android
 
-## Chạy và kiểm tra
-
-Cần JDK 17 và Android SDK gồm `platforms;android-35`, `build-tools;35.0.0`, `platform-tools`. Đặt `ANDROID_HOME` tới SDK hoặc tạo `local.properties` với `sdk.dir=/đường/dẫn/SDK`. Gradle Wrapper 8.11.1 đã có trong repo và kiểm tra SHA-256 của bản phân phối.
+Cần JDK 17 và Android SDK gồm `platforms;android-35`, `build-tools;35.0.0`, `platform-tools`. Đặt `ANDROID_HOME` tới SDK hoặc tạo `local.properties` với `sdk.dir=/đường/dẫn/SDK`. Repo có Gradle Wrapper 8.11.1 và kiểm tra SHA-256 của bản phân phối.
 
 ```sh
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lint
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+APK nằm ở `app/build/outputs/apk/debug/app-debug.apk`.
+
 Mở PrivacyGuard, chọn **Bật lọc DNS** và chấp nhận hộp thoại VPN của Android. Chỉ một VPN được hoạt động tại một thời điểm. Dừng bằng nút trong ứng dụng hoặc thông báo dịch vụ. Nếu tiến trình bị dừng, ứng dụng không tự bật lại VPN.
 
-## Chọn DNS và xem yêu cầu bị chặn/gặp lỗi (0.3.0)
+## Chọn máy chủ DNS
 
-- **Cài đặt → Máy chủ DNS** (hoặc mục DNS trên Tổng quan): chọn Quad9, Cloudflare, Google hoặc AdGuard. Nhấn **+** để thêm tên, IP chính, IP dự phòng và cổng DNS thường (mặc định 53). Bản 0.4 bổ sung tên xác thực TLS, không nhận URL DoH/DoT làm địa chỉ kết nối. Có sửa/xóa, tối đa 20 cấu hình.
-- Lựa chọn được lưu trên thiết bị và áp dụng cho các truy vấn tiếp theo, không cần khởi động lại VPN. Chỉ dùng địa chỉ chính/dự phòng của cấu hình đã chọn. Mặc định là Quad9 `9.9.9.9` / `149.112.112.112`; bản này không còn tự chuyển sang nhà cung cấp Cloudflare khi Quad9 gặp lỗi.
-- Chạm số **Đã chặn** hoặc **Gặp lỗi** trên Tổng quan, hoặc hai mục tương ứng trong tab **Ứng dụng**. Danh sách có tìm kiếm, lọc theo ngày/app/trạng thái, phân trang và xuất kết quả. Cần bật nhật ký để có tên miền và truy vấn mới; bộ đếm cũ không khôi phục được chi tiết.
-- Chi tiết giải thích vì sao bị chặn, hoặc máy chủ chưa trả lời/đang gặp sự cố/từ chối yêu cầu. Có hướng xử lý và nút **Cho phép**, **Xem luật** hoặc **Đổi máy chủ DNS** phù hợp. Mã lỗi và tên package nằm trong **Chi tiết kỹ thuật**.
+Vào **Cài đặt → Máy chủ DNS**, hoặc mục DNS trên Tổng quan. Mặc định là Quad9 với IP chính `9.9.9.9` và dự phòng `149.112.112.112`. Có thể chọn nhà cung cấp khác hoặc nhấn **+** để thêm tên, IP chính, IP dự phòng, cổng DNS thường và tên xác thực TLS. Hỗ trợ sửa/xóa, tối đa 20 cấu hình.
 
-[Xem giao diện native và biên bản 0.3](docs/dns-requests.html). Ảnh dùng fixture kiểm thử; APK không có dữ liệu mẫu. Máy chủ DNS có bộ lọc riêng có thể từ chối tên miền mà PrivacyGuard đã cho phép; “Đã chặn” chỉ tính chặn do PrivacyGuard, “Đã gửi” không bảo đảm app đã kết nối thành công.
+Luồng xử lý:
 
-## Xem tên miền theo ứng dụng
+```text
+DNS hệ thống → PrivacyGuard qua UDP/TCP 53 → luật tên miền → máy chủ DNS đã chọn
+```
 
-Bản **0.2.0** có giao diện sáng/tối, thanh tab dưới và màn hình chi tiết ứng dụng:
+- Khi tắt **Mã hóa DNS**, truy vấn được gửi qua UDP/TCP tới cổng DNS thường của cấu hình, mặc định 53. Phản hồi UDP bị cắt được thử lại qua TCP ở cùng IP/cổng.
+- Khi bật **Mã hóa DNS**, truy vấn được gửi qua TLS 853, có xác thực chứng chỉ và tên máy chủ. Nếu thất bại, chỉ thử địa chỉ dự phòng của cùng cấu hình qua TLS; không tự hạ xuống DNS thường.
+- DNS tùy chỉnh nhận địa chỉ IP để kết nối. Khi dùng TLS, nhập **Tên xác thực TLS** do nhà cung cấp công bố. Cổng TLS cố định 853, độc lập với cổng DNS thường; ô địa chỉ không nhận URL DoH/DoT.
 
-1. Mở **Ứng dụng → Bật nhật ký tên miền**. Nhật ký mặc định tắt và chỉ ghi các truy vấn mới từ lúc bật.
-2. Chọn **Bật lọc DNS** và cấp quyền VPN; sử dụng ứng dụng cần quan sát.
+Lựa chọn được lưu và áp dụng cho truy vấn mới khi VPN đang bật. Truy vấn bị PrivacyGuard chặn nhận NXDOMAIN; lỗi chuyển tiếp nhận SERVFAIL.
+
+## Xem tên miền và truy vấn
+
+1. Mở **Ứng dụng → Bật nhật ký tên miền**. Nhật ký mặc định tắt và chỉ ghi truy vấn mới từ lúc bật.
+2. Bật lọc DNS, sau đó sử dụng ứng dụng cần quan sát.
 3. Mở **Ứng dụng → tên app** để xem tên miền, số lần chặn/chuyển tiếp/lỗi và nhật ký. Chạm tên miền để xem lý do hoặc tạo luật.
-4. Nếu Android dùng resolver chung, xem **Chưa xác định ứng dụng** hoặc **Tất cả tên miền**. Không suy đoán app từ tên miền; luật tại các màn hình này là toàn cục, có xác nhận phạm vi trước khi lưu.
+4. Chạm số **Đã chặn** hoặc **Gặp lỗi** trên Tổng quan, hoặc mục tương ứng trong tab **Ứng dụng**, để xem danh sách riêng.
 
-Tìm kiếm và bộ lọc chạy trên toàn bộ tối đa 2.000 sự kiện, trước khi phân trang 30 dòng. Nút xuất trong màn hình tên miền xuất đúng kết quả đang lọc. Bộ đếm tổng hợp có thể lớn hơn nhật ký đã giới hạn. [Ảnh giao diện native và biên bản 0.2](docs/mobile-redesign.html) dùng dữ liệu kiểm thử, không có dữ liệu mẫu trong APK.
+Danh sách hỗ trợ tìm kiếm, lọc theo ngày/ứng dụng/trạng thái, phân trang 30 dòng và xuất đúng kết quả đang lọc. Chi tiết truy vấn giải thích bằng ngôn ngữ thông thường, gợi ý cách xử lý và có nút cho phép, xem luật hoặc đổi DNS theo trường hợp. **Chi tiết kỹ thuật** hiển thị thông tin chẩn đoán kết nối, TLS và kiểm tra phản hồi khi có dữ liệu.
 
-## Tính năng
+Khi Android không cung cấp danh tính ứng dụng đáng tin cậy, truy vấn nằm trong **Chưa xác định ứng dụng** hoặc **Tất cả tên miền** và áp dụng luật toàn cục. PrivacyGuard không suy đoán ứng dụng từ tên miền.
 
-- VPN chỉ định tuyến hai địa chỉ DNS nội bộ, xử lý UDP/TCP trên IPv4/IPv6. Truy vấn bị chặn nhận NXDOMAIN; truy vấn được phép được gửi tới máy chủ DNS đã chọn, với địa chỉ dự phòng cùng cấu hình; UDP bị cắt được gửi lại qua TCP ở cùng IP/cổng. Lỗi mạng nhận SERVFAIL.
-- Luật nhóm toàn cục/theo ứng dụng, ngoại lệ exact/wildcard, thay thế luật trùng và công cụ thử quyết định không truy cập mạng. Danh sách ứng dụng lấy từ các launcher app mà Android cho phép nhìn thấy.
-- Link cleaner giữ thứ tự/encoding, tham số lặp và fragment; có tham số tùy chỉnh, sao chép/chia sẻ và nhận link qua Android Share.
-- Dashboard từ phản hồi DNS đã ghi vào TUN; tách chặn, chuyển tiếp và lỗi. Lưu bộ đếm tổng hợp trong 7 ngày lịch; nhật ký chi tiết mặc định tắt, nếu bật thì giới hạn 2.000 sự kiện/7 ngày. Có tìm kiếm, bộ lọc, xuất JSON qua trình chọn tệp và xóa dữ liệu.
-- WebView HTTPS trong tiến trình/kho dữ liệu riêng; tắt cookie bên thứ ba, chặn tracker bên thứ ba theo luật, tắt truy cập mạng của service worker, xóa cookie/cache/WebStorage khi đóng và trước phiên mới. Không lưu URL vào dashboard; chặn ảnh chụp màn hình của phiên.
-- Icon từ ảnh logo đã cung cấp: adaptive icon với nền đen, khoảng an toàn chống cắt và lớp monochrome cho launcher Android 13 trở lên. PNG foreground ở `app/src/main/res/drawable-nodpi/ic_launcher_art.png`.
+## Link sạch và phân tích URL
 
-## Phạm vi và giới hạn
+**Link → Làm sạch link** loại bỏ `utm_*`, `fbclid`, `gclid` và các tham số tùy chỉnh. Công cụ giữ thứ tự, encoding, tham số lặp, fragment và các tham số không liên quan. Tên tùy chỉnh phân cách bằng dấu phẩy; dấu `*` cuối tên dùng để khớp tiền tố.
 
-Đây là **bộ lọc DNS**, không phải proxy toàn bộ lưu lượng, VPN mã hóa hoặc bộ chặn mọi tracker. DNS over HTTPS/TLS, DNS tự chọn, địa chỉ IP trực tiếp và kết nối đã cache có thể bỏ qua lọc. IPv6 extension headers và IP fragments chưa được hỗ trợ trong đường DNS. Danh sách tracker khởi đầu nhỏ, không phải feed đầy đủ.
+**Phân tích URL** hiển thị nhận định và giải thích từng dấu hiệu. Tham số đo lường như `utm_*` hoặc `gclid` không đủ để kết luận một yêu cầu tải quảng cáo; nhận định không tự tạo luật hay chặn yêu cầu. DNS chỉ thấy tên miền, không thấy đường dẫn hoặc query param của HTTPS.
 
-Android thường dùng resolver chung, nên UID của socket DNS không đảm bảo nhận diện được ứng dụng gốc. Khi UID là hệ thống, không hợp lệ hoặc dùng chung bởi nhiều package, sự kiện hiển thị **Chưa xác định ứng dụng** và dùng luật toàn cục. Luật ứng dụng chỉ được áp dụng khi có một package xác định; không suy đoán từ tên miền.
+Trong **Phiên riêng tư → Yêu cầu trong phiên → Bật xem yêu cầu**, có thể xem URL do WebView cung cấp. Danh sách giữ tối đa 100 yêu cầu gần nhất trong bộ nhớ, mặc định ẩn đường dẫn và giá trị tham số. Tắt xem yêu cầu, tạo phiên mới hoặc kết thúc phiên sẽ xóa danh sách. URL của các ứng dụng khác không được phân tích.
 
-Trình duyệt không tạo ẩn danh với website/nhà mạng; chặn theo tên miền không phân biệt đường dẫn trên domain dùng chung. `shouldInterceptRequest` không kiểm tra lại tất cả redirect. Xóa dữ liệu và vòng đời VPN cần kiểm thử trên các thiết bị/WebView mục tiêu; xóa lúc khởi động bảo vệ phiên kế tiếp khi tiến trình trước bị hệ thống kết thúc đột ngột.
+## Kiến trúc và mã nguồn
 
-## Kiểm thử trên emulator
+| Thành phần | Vị trí |
+| --- | --- |
+| Giao diện native và các luồng sử dụng | [MainActivity.kt](app/src/main/java/com/privacyguard/android/MainActivity.kt), [Ui.kt](app/src/main/java/com/privacyguard/android/Ui.kt) |
+| VPN, xử lý gói tin, DNS và luật | [DnsVpnService.kt](app/src/main/java/com/privacyguard/android/DnsVpnService.kt), [core/](app/src/main/java/com/privacyguard/android/core/) |
+| Cấu hình, thống kê và nhật ký cục bộ | [GuardStore.kt](app/src/main/java/com/privacyguard/android/GuardStore.kt) |
+| Phiên trình duyệt riêng tư | [PrivateBrowserActivity.kt](app/src/main/java/com/privacyguard/android/PrivateBrowserActivity.kt) |
+| Unit test và kiểm thử thiết bị | [app/src/test/](app/src/test/), [app/src/androidTest/](app/src/androidTest/) |
+| Prototype web độc lập | [prototype-web/](prototype-web/) |
 
-Có bộ unit test cho luật, URL, DNS, checksum, gói tin lỗi, TCP và nhóm/lọc tên miền. Các kiểm thử Robolectric 4.17 chạy view Android thật và SQLite native trên SDK 35; có kiểm tra phạm vi luật, opt-in, lưu/chỉnh sửa DNS, danh sách chặn/lỗi, cỡ chữ và render PNG vào `app/build/ui-previews/`. `android.useAndroidX=true` phục vụ thư viện kiểm thử; APK không thêm AndroidX runtime. Các kiểm thử socket JVM chạy DNS UDP/TCP thật qua loopback ở cổng tùy chỉnh và xác nhận gọi bảo vệ socket trước khi gửi. APK kiểm thử thiết bị kiểm tra SQLite/SharedPreferences, retention, các nút UI và truy vấn thực qua TUN; trước khi chạy, chọn một DNS có thể truy cập trên emulator. Chỉ dùng các lệnh sau với **emulator thử nghiệm Android 13 trở lên**, vì kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
+[ARCHITECTURE.md](ARCHITECTURE.md) mô tả các module, yêu cầu về quyền riêng tư và thứ tự ưu tiên luật: ngoại lệ tên miền theo ứng dụng → ngoại lệ toàn cục → nhóm theo ứng dụng → nhóm toàn cục → mặc định cho phép. Trong cùng phạm vi, exact ưu tiên hơn wildcard, sau đó chọn hậu tố khớp dài nhất. `*.example.com` chỉ khớp tên miền con; muốn khớp cả tên miền gốc cần thêm `example.com` riêng.
+
+## Dữ liệu và phạm vi bảo vệ
+
+Bộ đếm tổng hợp lưu trong 7 ngày lịch. Nhật ký chi tiết cần người dùng bật, giới hạn 2.000 sự kiện/7 ngày; bộ đếm có thể lớn hơn phần nhật ký còn giữ. Bộ đếm cũ không khôi phục được chi tiết truy vấn. Có xuất JSON qua trình chọn tệp và xóa dữ liệu trong ứng dụng.
+
+Nhật ký DNS không lưu payload gói tin, URL đầy đủ, headers, cookie hoặc body. Thông tin chẩn đoán chỉ lưu metadata khi bật nhật ký. Link và URL phân tích được xử lý trong bộ nhớ; danh sách yêu cầu của phiên riêng tư không ghi vào SQLite, SharedPreferences hoặc JSON xuất.
+
+VPN chỉ định tuyến hai địa chỉ DNS nội bộ. Các app tự dùng DoH/DoT, DNS riêng, địa chỉ IP trực tiếp hoặc kết nối đã cache có thể bỏ qua lọc. IPv6 extension headers và IP fragments chưa được hỗ trợ trong đường DNS. Danh sách tracker khởi đầu nhỏ, chưa có feed đầy đủ.
+
+Android có thể dùng resolver chung hoặc UID dùng chung bởi nhiều package; luật theo ứng dụng chỉ áp dụng khi xác định được một package. Máy chủ DNS có bộ lọc riêng cũng có thể từ chối tên miền PrivacyGuard đã cho phép. **Đã chặn** chỉ tính chặn do PrivacyGuard; **Đã gửi** không bảo đảm ứng dụng đã kết nối thành công.
+
+Phiên riêng tư tắt cookie bên thứ ba, lọc tracker bên thứ ba theo luật, tắt mạng của service worker và chặn ảnh chụp màn hình. Cookie, cache và WebStorage được xóa khi kết thúc và trước phiên mới. Chế độ này không tạo ẩn danh với website/nhà mạng; chặn theo tên miền không phân biệt đường dẫn trên domain dùng chung, và callback WebView không quan sát đầy đủ mọi redirect.
+
+## Kiểm thử
+
+Unit test kiểm tra luật, URL, DNS, checksum, gói tin lỗi, TCP và thống kê. Robolectric chạy view Android và SQLite native trên SDK 35, kiểm tra cấu hình, nhật ký, phạm vi luật, cỡ chữ và render ảnh vào `app/build/ui-previews/`.
+
+Kiểm thử socket JVM dùng UDP/TCP/TLS thật qua loopback để kiểm tra framing, xác thực TLS, phân loại lỗi và thứ tự bảo vệ socket. Chứng chỉ trong `app/src/test/resources/dns-test.p12` là fixture chỉ cho test, không đóng gói vào APK. Kiểm thử WebView dùng callback giả lập và shadow ServiceWorkerController; chúng không chạy Chromium/network thật và không thay thế kiểm thử trên thiết bị.
+
+APK kiểm thử thiết bị kiểm tra lưu trữ, retention, UI và truy vấn qua TUN. Chọn DNS có thể truy cập trước khi chạy. Các lệnh sau dành cho **emulator thử nghiệm Android 13 trở lên**; kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
 
 ```sh
 ./gradlew :app:assembleDebugAndroidTest
@@ -75,13 +108,11 @@ adb -s emulator-5554 shell appops set com.privacyguard.android ACTIVATE_VPN allo
 adb -s emulator-5554 shell am instrument -w com.privacyguard.android.test/com.privacyguard.android.MvpInstrumentation
 ```
 
-Kiểm thử TLS dùng socket thật qua loopback: xác nhận SNI, framing, sai hostname/chứng chỉ không tin cậy và không hạ xuống plaintext. Chứng chỉ `app/src/test/resources/dns-test.p12` là fixture công khai chỉ cho test, không được đóng gói vào APK. Kiểm thử WebView dùng callback giả lập và shadow ServiceWorkerController, không chạy Chromium/network thật.
-
-Trên thiết bị thật, cấp quyền VPN qua giao diện. Kiểm tra thêm: từ chối quyền; bật/dừng liên tiếp; thu hồi VPN; chuyển Wi-Fi/di động; DNS mã hóa; trang HTTPS có cookie/localStorage và phiên mới sau khi đóng/kill tiến trình. Xem [phạm vi và biên bản MVP](docs/mvp.html), [DNS/TLS và nhận định URL](docs/query-dns-tls.html) và [kiến trúc](ARCHITECTURE.md).
+Trên thiết bị thật, cấp quyền VPN qua giao diện. Cần kiểm tra thêm vòng đời VPN, chuyển Wi-Fi/di động, khả năng kết nối TLS 853 và xóa dữ liệu phiên trên các thiết bị/WebView mục tiêu. Phạm vi kiểm chứng của từng đợt nằm trong các biên bản ở `docs/`.
 
 ## Web prototype
 
-`prototype-web/` vẫn là simulator độc lập, không lọc lưu lượng thật:
+[prototype-web/](prototype-web/README.md) là simulator để thử giao diện và logic luật, dùng Node.js 20 trở lên:
 
 ```sh
 cd prototype-web
@@ -89,4 +120,15 @@ npm start
 npm test
 ```
 
-Mở `http://localhost:3000`. Dữ liệu demo của web không xuất hiện trong bộ đếm Android.
+Mở `http://localhost:3000`. Prototype không lọc lưu lượng thật; dữ liệu demo của web không xuất hiện trong bộ đếm Android.
+
+## Tài liệu
+
+- [Kiến trúc và nguyên tắc](ARCHITECTURE.md).
+- [Phạm vi và kiểm chứng MVP](docs/mvp.html).
+- [Giao diện mobile và tên miền theo ứng dụng](docs/mobile-redesign.html).
+- [Máy chủ DNS và danh sách truy vấn](docs/dns-requests.html).
+- [DNS-over-TLS và nhận định URL](docs/query-dns-tls.html).
+- [Chẩn đoán lỗi DNS và kiểm tra bố cục UI](docs/dns-error-ui.html).
+
+Các biên bản HTML chứa ảnh kiểm thử, chi tiết triển khai và kết quả kiểm chứng, có thể mở trực tiếp hoặc in A4.

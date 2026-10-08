@@ -22,6 +22,17 @@ internal fun udpWire(query: UdpPacket): ByteArray = Packets.udpReply(query.copy(
     source = query.destination, destination = query.source, sourcePort = query.destinationPort, destinationPort = query.sourcePort), query.payload)
 
 class PacketsTest {
+    @Test fun responseNameMatchingIsCaseInsensitiveButIdTypeClassAndLabelsAreStillStrict() {
+        val query = dnsQuery("Api.Example.COM", type = 28)
+        val answer = Packets.dnsError(query, Packets.question(query)!!, 0)
+        val lower = answer.copyOf().apply { for (i in 12 until size - 4) if (this[i].toInt() in 65..90) this[i] = (this[i] + 32).toByte() }
+        assertTrue(Packets.validResponse(query, lower))
+        assertEquals(DnsResponseIssue.TRANSACTION_ID, Packets.responseIssue(query, lower.copyOf().apply { this[0] = 99 }))
+        assertEquals(DnsResponseIssue.QUESTION_NAME, Packets.responseIssue(query, lower.copyOf().apply { this[13] = 'z'.code.toByte() }))
+        assertEquals(DnsResponseIssue.QUESTION_TYPE_CLASS, Packets.responseIssue(query, lower.copyOf().apply { this[lastIndex - 2] = 1 }))
+        assertEquals(DnsResponseIssue.QUESTION_TYPE_CLASS, Packets.responseIssue(query, lower.copyOf().apply { this[lastIndex] = 2 }))
+        assertEquals(DnsResponseIssue.QUESTION_COUNT, Packets.responseIssue(query, lower.copyOf().apply { Packets.put16(this, 4, 0) }))
+    }
     @Test fun udpRoundTripsBothFamiliesAndValidatesChecksums() {
         for (version in listOf(4, 6)) {
             val query = udpQuery(dnsQuery(), version)

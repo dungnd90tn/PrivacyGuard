@@ -75,6 +75,10 @@ class Ui(private val context: Context) {
         val foreground = if (primary) { if (dark) Color.parseColor("#0B2444") else Color.WHITE } else accent
         setTextColor(ColorStateList(arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()), intArrayOf(muted, foreground)))
         background = ripple(fill, 14); setPadding(dp(14), dp(10), dp(14), dp(10))
+        // Custom rounded controls need explicit spacing; the platform button animator otherwise
+        // adds a shadow that crosses the next control's edge on real devices.
+        stateListAnimator = null; elevation = 0f; translationZ = 0f
+        layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10); bottomMargin = dp(4) }
         setOnClickListener { action() }
     }
     fun card(parent: LinearLayout, title: String, body: String? = null): LinearLayout = group(parent, 18).apply {

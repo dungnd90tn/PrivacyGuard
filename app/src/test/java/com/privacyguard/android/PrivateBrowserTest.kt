@@ -38,6 +38,20 @@ import java.io.File
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PrivateBrowserTest {
+    @Test fun toolbarActionsAndRequestButtonsHaveSeparateTouchAreas() {
+        setup()
+        val root = controller!!.get().window.decorView
+        root.measure(View.MeasureSpec.makeMeasureSpec(390, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(844, View.MeasureSpec.EXACTLY)); root.layout(0, 0, 390, 844)
+        val buttons = views(root).filterIsInstance<android.widget.Button>()
+        val open = buttons.single { it.text.toString() == "Mở" }; val end = buttons.single { it.text.toString() == "Kết thúc phiên" }
+        assertTrue(end.left - open.right >= 12)
+        val dialog = journal(); click(dialog.window!!.decorView, "Bật xem yêu cầu")
+        captureDialog("browser-spacing-041", dialog)
+        val actions = views(dialog.window!!.decorView).filterIsInstance<android.widget.Button>().filter { it.text.toString() in listOf("Tắt và xóa yêu cầu", "Tải lại trang để xem", "Làm mới danh sách") }
+        assertEquals(3, actions.size)
+        actions.zipWithNext().forEach { (a, b) -> assertTrue(b.top - a.bottom >= 8) }
+        assertTrue(actions.all { it.height >= 48 && it.elevation == 0f })
+    }
     private var controller: ActivityController<PrivateBrowserActivity>? = null
     private fun idle() = Shadows.shadowOf(Looper.getMainLooper()).idle()
     private fun views(root: View): List<View> = listOf(root) + if (root is ViewGroup) (0 until root.childCount).flatMap { views(root.getChildAt(it)) } else emptyList()

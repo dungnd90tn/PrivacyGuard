@@ -149,6 +149,8 @@ What exists today, under `app/src/main/java/com/privacyguard/android/core/`:
 
 Native version 0.4 adds optional authenticated DNS-over-TLS on upstream port 853, with VPN DNS input still on UDP/TCP 53. `core/UrlAnalysis.kt` makes display-only URL/query inferences; `RequestSession` is an opt-in, bounded process-memory journal for the private browser. Never persist URL/path/query values to DNS events, preferences or exports; never use query inferences as blocking policy. See `docs/query-dns-tls.html` for evidence and limits. Test TLS certificates live in test resources only; production uses platform trust roots.
 
+Version 0.4.1 binds TCP/TLS sockets before `VpnService.protect` to allocate Android's lazily created native descriptor. Do not move protect ahead of descriptor creation or after connect. `core/DnsDiagnostics.kt` preserves per-attempt failure kind/stage; `DnsFailureCodec.kt` stores bounded metadata in the existing reason column only with detailed logging. Never persist raw exception messages or packet contents. Legacy reasons remain readable. Native UI controls use explicit spacing and flat custom button backgrounds; see `docs/dns-error-ui.html` for validation.
+
 ### `prototype-web/` — web prototype (Node ≥ 20, zero dependencies)
 
 - `server.mjs` — static file server with an explicit allowlisted asset map (no directory traversal), restrictive security headers (CSP, `X-Content-Type-Options`, `Referrer-Policy`), binds to `127.0.0.1` unless `HOST` is set.

@@ -196,11 +196,12 @@ class MainActivity : Activity() {
         val nav = ui.row().apply { background = ui.rounded(ui.surface, radius = 0); setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8)); elevation = ui.dp(8).toFloat() }
         listOf(Triple("overview", "Tổng quan", "overview"), Triple("apps", "Ứng dụng", "apps"), Triple("rules", "Luật", "rules"), Triple("cleaner", "Link", "link"), Triple("settings", "Cài đặt", "settings")).forEach { (id, label, icon) ->
             val selected = page == id || (page == "dns" && id == "settings")
+            val compactLabel = if (resources.configuration.screenWidthDp <= 360 && resources.configuration.fontScale > 1.15f) label.replace(' ', '\n') else label
             nav.addView(ui.column().apply {
                 gravity = Gravity.CENTER; minimumHeight = ui.dp(58); setPadding(ui.dp(2), ui.dp(5), ui.dp(2), ui.dp(5))
                 background = ui.ripple(if (selected) ui.soft else android.graphics.Color.TRANSPARENT, 16)
                 addView(ui.glyph(icon, if (selected) ui.accent else ui.muted), LinearLayout.LayoutParams(ui.dp(23), ui.dp(23)))
-                addView(ui.text(label, 11f, selected, if (selected) ui.accent else ui.muted).apply { gravity = Gravity.CENTER; maxLines = 2 })
+                addView(ui.text(compactLabel, 11f, selected, if (selected) ui.accent else ui.muted).apply { gravity = Gravity.CENTER; maxLines = 2 })
                 contentDescription = label; isSelected = selected; isFocusable = true; isScreenReaderFocusable = true
                 setOnClickListener { navigate(id) }
             }, LinearLayout.LayoutParams(0, -2, 1f))
@@ -503,6 +504,7 @@ class MainActivity : Activity() {
         val domain = ui.field("example.com hoặc *.example.com"); exceptions.addView(domain); ui.gap(exceptions, 10)
         val exceptionIds = listOf("*") + scopeApps.map { it.id }
         val scope = spinner(listOf("Tất cả ứng dụng") + scopeApps.map { it.name }, exceptionIds.indexOf(selectedApp ?: "*").coerceAtLeast(0)); exceptions.addView(scope)
+        ui.gap(exceptions, 10)
         val decision = spinner(listOf("Cho phép", "Chặn")); exceptions.addView(decision)
         val error = ui.text("", color = ui.red).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }; exceptions.addView(error)
         exceptions.addView(ui.button("Lưu ngoại lệ", true) {
@@ -524,7 +526,7 @@ class MainActivity : Activity() {
             }
         }
         val tester = ui.card(content, "Thử quyết định", "Kiểm tra luật cục bộ, không truy cập mạng.")
-        val testDomain = ui.field("ads.example.com"); tester.addView(testDomain)
+        val testDomain = ui.field("ads.example.com"); tester.addView(testDomain); ui.gap(tester, 10)
         val testScope = spinner(listOf("Chưa xác định ứng dụng") + scopeApps.map { it.name }); tester.addView(testScope)
         val result = ui.text("").apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
         tester.addView(ui.button("Kiểm tra") {
@@ -566,7 +568,7 @@ class MainActivity : Activity() {
         ui.listRow(about, "Danh sách tracker", "Danh sách khởi đầu; chưa đầy đủ", "rules") { showInfo("Tên miền nhận diện", Rules.trackers.keys.joinToString("\n") + "\n\nTên miền dùng chung có thể ảnh hưởng chức năng thiết yếu. Bạn có thể tạo ngoại lệ để khôi phục kết nối.") }
         ui.separator(about, 68)
         ui.listRow(about, "Phiên duyệt riêng tư", "Cookie, cache và dữ liệu website riêng", "browser") { showInfo("Phiên riêng tư", "WebView có kho cookie riêng. Dữ liệu được xóa khi kết thúc và trước phiên mới. Chặn tracker bên thứ ba theo tên miền từ danh sách khởi đầu; không kiểm tra lại mọi redirect. Service worker không được truy cập mạng.\n\nTrang web và nhà mạng vẫn có thể thấy địa chỉ IP của bạn.") }
-        ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.4.0\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
+        ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.4.1\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
     }
     private fun openDns() {
         if (page != "dns") dnsReturnPage = page
@@ -703,7 +705,7 @@ class MainActivity : Activity() {
         detail.addView(ui.text("Bạn có thể làm gì?", 16f, true)); detail.addView(ui.text(words.suggestion, 14f, color = ui.muted))
         ui.gap(detail, 12)
         detail.addView(ui.text("URL và tham số", 16f, true))
-        detail.addView(ui.text("DNS chỉ cho biết tên miền, không chứa đường dẫn hoặc query param của HTTPS. Phân tích URL bạn có trong Link sạch hoặc bật xem yêu cầu trong phiên riêng tư.", 13f, color = ui.muted))
+        detail.addView(ui.text("DNS chỉ ghi tên miền. Xem query param khi bạn có URL hoặc trong phiên riêng tư.", 13f, color = ui.muted))
         detail.addView(ui.button("Phân tích URL") { dialog?.dismiss(); navigate("cleaner") })
         if (event.outcome == Outcome.BLOCKED) {
             ui.gap(detail, 12)
@@ -712,7 +714,7 @@ class MainActivity : Activity() {
         }
         ui.gap(detail, 14)
         detail.addView(ui.button("Chi tiết kỹ thuật") {
-            showInfo("Thông tin yêu cầu", "Tên miền: ${event.domain}\nỨng dụng: ${event.app ?: "Android chưa cung cấp ứng dụng gốc"}\nThời điểm: ${time(event.time, "dd/MM/yyyy HH:mm:ss")}\nNhóm: ${event.category.label}\nTrạng thái: ${event.outcome.label}\nLý do ghi nhận: ${event.reason}")
+            showInfo("Thông tin yêu cầu", "Tên miền: ${event.domain}\nỨng dụng: ${event.app ?: "Android chưa cung cấp ứng dụng gốc"}\nThời điểm: ${time(event.time, "dd/MM/yyyy HH:mm:ss")}\nNhóm: ${event.category.label}\nTrạng thái: ${event.outcome.label}\nLý do ghi nhận: ${DnsFailureCodec.technical(event.reason)}")
         })
         val builder = AlertDialog.Builder(this).setTitle(if (event.outcome == Outcome.BLOCKED) "Yêu cầu bị chặn" else if (event.outcome == Outcome.FAILED) "Yêu cầu gặp lỗi" else "Chi tiết yêu cầu")
             .setView(ScrollView(this).apply { addView(detail) }).setNegativeButton("Đóng", null)
@@ -768,10 +770,14 @@ class MainActivity : Activity() {
         val cleaner = ui.card(content, "Link gọn, chia sẻ an tâm", "Bỏ utm_*, fbclid, gclid và tham số tùy chỉnh. URL chỉ được xử lý trong bộ nhớ; không lưu vào lịch sử.")
         val input = ui.field("https://example.com/?utm_source=email", true).apply { setText(cleanerDraft); maxLines = 6 }
         cleaner.addView(input); ui.gap(cleaner, 12)
-        val result = ui.text("").apply { setTextIsSelectable(true); accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+        val result = ui.text("").apply {
+            visibility = View.GONE; setTextIsSelectable(true); accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) }
+        }
         val actions = ui.column()
         fun showResult(url: String, removed: List<String>) {
             cleanedUrl = url
+            result.visibility = View.VISIBLE
             result.text = getString(R.string.clean_result, if (removed.isEmpty()) getString(R.string.link_already_clean)
                 else resources.getQuantityString(R.plurals.link_removed, removed.size, removed.size, removed.joinToString(", ")), url)
             actions.removeAllViews()
@@ -788,22 +794,24 @@ class MainActivity : Activity() {
         cleaner.addView(ui.button("Làm sạch link", true) {
             cleanerDraft = input.text.toString()
             try { val cleaned = LinkCleaner.clean(cleanerDraft, store.customParams); showResult(cleaned.url, cleaned.removed) }
-            catch (e: IllegalArgumentException) { cleanedUrl = null; actions.removeAllViews(); result.text = e.message }
+            catch (e: IllegalArgumentException) { cleanedUrl = null; actions.removeAllViews(); result.visibility = View.VISIBLE; result.text = e.message }
         })
-        val analysisPanel = ui.column()
+        val analysisPanel = ui.column().apply {
+            visibility = View.GONE; layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) }
+        }
         cleaner.addView(ui.button("Phân tích URL") {
-            urlAnalysis = null; analysisPanel.removeAllViews()
+            urlAnalysis = null; analysisPanel.removeAllViews(); analysisPanel.visibility = View.VISIBLE
             runCatching { UrlAnalyzer.analyze(input.text.toString()) }.onSuccess { analysis ->
                 urlAnalysis = analysis; showUrlAnalysis(ui, analysisPanel, analysis)
             }.onFailure { analysisPanel.addView(ui.text(it.message ?: "Không đọc được URL.", 14f, color = ui.red)) }
         })
         cleaner.addView(analysisPanel)
-        urlAnalysis?.let { showUrlAnalysis(ui, analysisPanel, it) }
-        ui.gap(cleaner, 12); cleaner.addView(result); cleaner.addView(actions)
+        urlAnalysis?.let { analysisPanel.visibility = View.VISIBLE; showUrlAnalysis(ui, analysisPanel, it) }
+        cleaner.addView(result); cleaner.addView(actions)
         cleanedUrl?.let { url -> showResult(url, runCatching { LinkCleaner.clean(cleanerDraft, store.customParams).removed }.getOrDefault(emptyList())) }
         input.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { cleanerDraft = s.toString(); cleanedUrl = null; urlAnalysis = null; analysisPanel.removeAllViews(); result.text = ""; actions.removeAllViews() }
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { cleanerDraft = s.toString(); cleanedUrl = null; urlAnalysis = null; analysisPanel.removeAllViews(); analysisPanel.visibility = View.GONE; result.text = ""; result.visibility = View.GONE; actions.removeAllViews() }
             override fun afterTextChanged(s: android.text.Editable?) = Unit
         })
         val custom = ui.card(content, "Tham số tùy chỉnh", "Phân cách bằng dấu phẩy; dấu * ở cuối để khớp tiền tố, ví dụ ref, campaign_*. Hãy kiểm tra link trước khi chia sẻ.")
