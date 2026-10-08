@@ -16,4 +16,7 @@
     <string name="attribution_note">Android có thể gộp DNS qua bộ phân giải hệ thống; khi đó không xác định được app gốc. Danh sách này chỉ phản ánh DNS qua bộ lọc, không phải mọi kết nối mạng.</string>
     <string name="traffic_summary">%1$s truy vấn tổng hợp · %2$s đã chặn</string>
     <string name="traffic_footer">%1$d tên miền · %2$d sự kiện khớp bộ lọc. Tìm kiếm trên toàn bộ nhật ký đã lưu (tối đa 2.000 sự kiện / 7 ngày). Bộ đếm tổng hợp có thể lớn hơn nhật ký giới hạn này.</string>
+    <plurals name="filtered_requests"><item quantity="other">%1$d yêu cầu trong nhật ký</item></plurals>
+    <string name="outcome_summary">Đã ghi nhận %1$s yêu cầu %2$s</string>
+    <string name="dns_save_error">Không lưu được máy chủ. Thông tin bạn nhập vẫn còn; hãy thử lại.</string>
 </resources>

@@ -19,17 +19,16 @@ import com.privacyguard.android.core.Action
 import com.privacyguard.android.core.Category
 import com.privacyguard.android.core.Decision
 import com.privacyguard.android.core.DnsFilter
+import com.privacyguard.android.core.DnsForwarder
+import com.privacyguard.android.core.SocketDnsTransport
 import com.privacyguard.android.core.DnsResult
 import com.privacyguard.android.core.Outcome
 import com.privacyguard.android.core.Packets
 import com.privacyguard.android.core.TcpDns
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.net.Socket
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
@@ -191,46 +190,14 @@ class DnsVpnService : VpnService() {
             }
         }
 
+        private val transport = SocketDnsTransport(
+            protectUdp = { protect(it) }, protectTcp = { protect(it) },
+            register = ::track, unregister = { socket -> synchronized(sockets) { sockets.remove(socket) } },
+            stopped = { closed.get() }
+        )
         private fun forward(query: ByteArray): ByteArray? {
-            for (server in listOf("9.9.9.9", "1.1.1.1")) {
-                if (closed.get()) return null
-                try {
-                    DatagramSocket().use { socket ->
-                        track(socket)
-                        try {
-                            check(protect(socket))
-                            socket.connect(InetAddress.getByName(server), 53); socket.soTimeout = 1500
-                            socket.send(DatagramPacket(query, query.size))
-                            val data = ByteArray(65507)
-                            val response = DatagramPacket(data, data.size)
-                            socket.receive(response)
-                            val bytes = data.copyOf(response.length)
-                            if (Packets.validResponse(query, bytes)) {
-                                if (Packets.u16(bytes, 2) and 0x0200 == 0) return bytes
-                                forwardTcp(query, server)?.let { return it }
-                            }
-                        } finally { synchronized(sockets) { sockets.remove(socket) } }
-                    }
-                } catch (_: Exception) { /* Try the second resolver, then report SERVFAIL. */ }
-            }
-            return null
-        }
-
-        private fun forwardTcp(query: ByteArray, server: String): ByteArray? {
-            Socket().use { socket ->
-                track(socket)
-                try {
-                    check(protect(socket))
-                    socket.connect(InetSocketAddress(server, 53), 1500); socket.soTimeout = 1500
-                    val data = java.io.DataOutputStream(socket.getOutputStream())
-                    data.writeShort(query.size); data.write(query); data.flush()
-                    val input = java.io.DataInputStream(socket.getInputStream())
-                    val size = input.readUnsignedShort()
-                    if (size !in 12..65000) return null
-                    val response = ByteArray(size); input.readFully(response)
-                    return response.takeIf { Packets.validResponse(query, it) }
-                } finally { synchronized(sockets) { sockets.remove(socket) } }
-            }
+            val selected = store.dnsSettings.active
+            return DnsForwarder.resolve(query, selected.endpoints, transport::exchange)
         }
 
         private fun fail() {

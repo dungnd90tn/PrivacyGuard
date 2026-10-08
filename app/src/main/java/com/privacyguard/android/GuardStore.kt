@@ -7,6 +7,9 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.privacyguard.android.core.Action
 import com.privacyguard.android.core.Category
 import com.privacyguard.android.core.DnsResult
+import com.privacyguard.android.core.DnsServer
+import com.privacyguard.android.core.DnsSettings
+import com.privacyguard.android.core.DnsServers
 import com.privacyguard.android.core.DomainRule
 import com.privacyguard.android.core.Outcome
 import com.privacyguard.android.core.Policy
@@ -57,6 +60,26 @@ class GuardStore(context: Context) : AutoCloseable {
     private val prefs = context.applicationContext.getSharedPreferences("privacyguard", Context.MODE_PRIVATE)
     private val database = History(context.applicationContext)
     val policy: Policy get() = PolicyCodec.decode(prefs.getString("policy", null))
+    val dnsSettings: DnsSettings get() = DnsSettingsCodec.decode(prefs.getString("dnsSettings", null))
+    fun selectDns(id: String) = synchronized(prefs) {
+        val settings = dnsSettings
+        require(settings.servers.any { it.id == id }) { "Máy chủ không còn trong danh sách. Hãy chọn lại." }
+        require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(settings.copy(selectedId = id))).commit()) { "Không lưu được lựa chọn DNS. Hãy thử lại." }
+    }
+    fun saveCustomDns(server: DnsServer, select: Boolean = true) = synchronized(prefs) {
+        require(server.custom) { "Chỉ chỉnh sửa máy chủ tùy chỉnh." }
+        val settings = dnsSettings
+        val remaining = settings.custom.filterNot { it.id == server.id }
+        require(remaining.size < DnsServers.MAX_CUSTOM) { "Bạn có thể lưu tối đa 20 máy chủ tùy chỉnh." }
+        val updated = settings.copy(custom = remaining + server, selectedId = if (select) server.id else settings.selectedId)
+        require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(updated)).commit()) { "Không lưu được máy chủ. Hãy thử lại." }
+    }
+    fun deleteCustomDns(id: String) = synchronized(prefs) {
+        val settings = dnsSettings
+        val updated = settings.copy(custom = settings.custom.filterNot { it.id == id },
+            selectedId = if (settings.selectedId == id) DnsServers.DEFAULT_ID else settings.selectedId)
+        require(prefs.edit().putString("dnsSettings", DnsSettingsCodec.encode(updated)).commit()) { "Không xóa được máy chủ. Hãy thử lại." }
+    }
     val customParams: List<String> get() {
         val values = runCatching { JSONArray(prefs.getString("customParams", "[]")) }.getOrDefault(JSONArray())
         return (0 until minOf(values.length(), 100)).mapNotNull { values.optString(it).takeIf { p -> p.isNotBlank() && p.length <= 100 } }
@@ -176,6 +199,7 @@ class GuardStore(context: Context) : AutoCloseable {
 
     fun export(): String = JSONObject().apply {
         put("version", 1); put("exportedAt", java.time.Instant.now().toString()); put("simulated", false)
+        put("dnsSettings", JSONObject(DnsSettingsCodec.encode(dnsSettings)))
         put("policy", JSONObject(PolicyCodec.encode(policy))); put("customParams", JSONArray(customParams))
         put("counters", JSONArray().apply { counters().forEach { counter ->
             put(JSONObject().put("app", counter.app ?: JSONObject.NULL).put("category", counter.category.name)

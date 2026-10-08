@@ -13,6 +13,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Mở PrivacyGuard, chọn **Bật lọc DNS** và chấp nhận hộp thoại VPN của Android. Chỉ một VPN được hoạt động tại một thời điểm. Dừng bằng nút trong ứng dụng hoặc thông báo dịch vụ. Nếu tiến trình bị dừng, ứng dụng không tự bật lại VPN.
 
+## Chọn DNS và xem yêu cầu bị chặn/gặp lỗi (0.3.0)
+
+- **Cài đặt → Máy chủ DNS** (hoặc mục DNS trên Tổng quan): chọn Quad9, Cloudflare, Google hoặc AdGuard. Nhấn **+** ở góc trên để thêm DNS tùy chỉnh với tên, IP chính, IP dự phòng tùy chọn và cổng (mặc định 53). Hỗ trợ IP IPv4/IPv6; chưa hỗ trợ hostname hoặc URL DoH/DoT. Có sửa/xóa máy chủ đã thêm, tối đa 20 cấu hình.
+- Lựa chọn được lưu trên thiết bị và áp dụng cho các truy vấn tiếp theo, không cần khởi động lại VPN. Chỉ dùng địa chỉ chính/dự phòng của cấu hình đã chọn. Mặc định là Quad9 `9.9.9.9` / `149.112.112.112`; bản này không còn tự chuyển sang nhà cung cấp Cloudflare khi Quad9 gặp lỗi.
+- Chạm số **Đã chặn** hoặc **Gặp lỗi** trên Tổng quan, hoặc hai mục tương ứng trong tab **Ứng dụng**. Danh sách có tìm kiếm, lọc theo ngày/app/trạng thái, phân trang và xuất kết quả. Cần bật nhật ký để có tên miền và truy vấn mới; bộ đếm cũ không khôi phục được chi tiết.
+- Chi tiết giải thích vì sao bị chặn, hoặc máy chủ chưa trả lời/đang gặp sự cố/từ chối yêu cầu. Có hướng xử lý và nút **Cho phép**, **Xem luật** hoặc **Đổi máy chủ DNS** phù hợp. Mã lỗi và tên package nằm trong **Chi tiết kỹ thuật**.
+
+[Xem giao diện native và biên bản 0.3](docs/dns-requests.html). Ảnh dùng fixture kiểm thử; APK không có dữ liệu mẫu. Máy chủ DNS có bộ lọc riêng có thể từ chối tên miền mà PrivacyGuard đã cho phép; “Đã chặn” chỉ tính chặn do PrivacyGuard, “Đã gửi” không bảo đảm app đã kết nối thành công.
+
 ## Xem tên miền theo ứng dụng
 
 Bản **0.2.0** có giao diện sáng/tối, thanh tab dưới và màn hình chi tiết ứng dụng:
@@ -26,7 +35,7 @@ Tìm kiếm và bộ lọc chạy trên toàn bộ tối đa 2.000 sự kiện, 
 
 ## Tính năng
 
-- VPN chỉ định tuyến hai địa chỉ DNS nội bộ, xử lý UDP/TCP trên IPv4/IPv6. Truy vấn bị chặn nhận NXDOMAIN; truy vấn được phép được chuyển tới Quad9 `9.9.9.9`, dự phòng Cloudflare `1.1.1.1`. Lỗi mạng nhận SERVFAIL.
+- VPN chỉ định tuyến hai địa chỉ DNS nội bộ, xử lý UDP/TCP trên IPv4/IPv6. Truy vấn bị chặn nhận NXDOMAIN; truy vấn được phép được gửi tới máy chủ DNS đã chọn, với địa chỉ dự phòng cùng cấu hình; UDP bị cắt được gửi lại qua TCP ở cùng IP/cổng. Lỗi mạng nhận SERVFAIL.
 - Luật nhóm toàn cục/theo ứng dụng, ngoại lệ exact/wildcard, thay thế luật trùng và công cụ thử quyết định không truy cập mạng. Danh sách ứng dụng lấy từ các launcher app mà Android cho phép nhìn thấy.
 - Link cleaner giữ thứ tự/encoding, tham số lặp và fragment; có tham số tùy chỉnh, sao chép/chia sẻ và nhận link qua Android Share.
 - Dashboard từ phản hồi DNS đã ghi vào TUN; tách chặn, chuyển tiếp và lỗi. Lưu bộ đếm tổng hợp trong 7 ngày lịch; nhật ký chi tiết mặc định tắt, nếu bật thì giới hạn 2.000 sự kiện/7 ngày. Có tìm kiếm, bộ lọc, xuất JSON qua trình chọn tệp và xóa dữ liệu.
@@ -43,7 +52,7 @@ Trình duyệt không tạo ẩn danh với website/nhà mạng; chặn theo tê
 
 ## Kiểm thử trên emulator
 
-Có bộ unit test cho luật, URL, DNS, checksum, gói tin lỗi, TCP và nhóm/lọc tên miền. Các kiểm thử Robolectric 4.17 chạy view Android thật và SQLite native trên SDK 35; có kiểm tra phạm vi luật, opt-in, cỡ chữ và render PNG vào `app/build/ui-previews/`. `android.useAndroidX=true` phục vụ thư viện kiểm thử; APK không thêm AndroidX runtime. APK kiểm thử thiết bị kiểm tra SQLite/SharedPreferences, retention, các nút UI và truy vấn thực qua TUN. Chỉ dùng các lệnh sau với **emulator thử nghiệm Android 13 trở lên**, vì kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
+Có bộ unit test cho luật, URL, DNS, checksum, gói tin lỗi, TCP và nhóm/lọc tên miền. Các kiểm thử Robolectric 4.17 chạy view Android thật và SQLite native trên SDK 35; có kiểm tra phạm vi luật, opt-in, lưu/chỉnh sửa DNS, danh sách chặn/lỗi, cỡ chữ và render PNG vào `app/build/ui-previews/`. `android.useAndroidX=true` phục vụ thư viện kiểm thử; APK không thêm AndroidX runtime. Các kiểm thử socket JVM chạy DNS UDP/TCP thật qua loopback ở cổng tùy chỉnh và xác nhận gọi bảo vệ socket trước khi gửi. APK kiểm thử thiết bị kiểm tra SQLite/SharedPreferences, retention, các nút UI và truy vấn thực qua TUN; trước khi chạy, chọn một DNS có thể truy cập trên emulator. Chỉ dùng các lệnh sau với **emulator thử nghiệm Android 13 trở lên**, vì kiểm thử xóa dữ liệu quan sát của ứng dụng trên emulator:
 
 ```sh
 ./gradlew :app:assembleDebugAndroidTest

@@ -1,7 +1,7 @@
 package com.privacyguard.android.core
 
 enum class Outcome(val label: String) {
-    BLOCKED("Đã chặn"), FORWARDED("Đã chuyển tiếp"), FAILED("Lỗi DNS")
+    BLOCKED("Đã chặn"), FORWARDED("Đã gửi"), FAILED("Gặp lỗi")
 }
 
 data class DnsResult(val response: ByteArray, val decision: Decision, val outcome: Outcome)

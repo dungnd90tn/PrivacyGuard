@@ -32,6 +32,8 @@ import android.widget.TextView
 import android.widget.Toast
 import com.privacyguard.android.core.Action
 import com.privacyguard.android.core.Category
+import com.privacyguard.android.core.DnsServer
+import com.privacyguard.android.core.DnsServers
 import com.privacyguard.android.core.LinkCleaner
 import com.privacyguard.android.core.Outcome
 import com.privacyguard.android.core.Rules
@@ -54,6 +56,8 @@ class MainActivity : Activity() {
     private var events = emptyList<GuardEvent>()
     private var timeline = emptyList<DailyCount>()
     private var page = "overview"
+    private var dnsReturnPage = "settings"
+    private var dnsSaving = false
     private var selectedApp: String? = null
     private var trafficScope: TrafficScope? = null
     private var days = 7
@@ -96,12 +100,16 @@ class MainActivity : Activity() {
             "*" -> TrafficScope.All; "?" -> TrafficScope.Unknown; null -> null; else -> TrafficScope.App(scope)
         }
         if (page == "activity") { page = "apps"; trafficScope = TrafficScope.All }
+        dnsReturnPage = savedInstanceState?.getString("dnsReturnPage") ?: "settings"
+        trafficOutcome = savedInstanceState?.getString("trafficOutcome")?.let { runCatching { Outcome.valueOf(it) }.getOrNull() }
         trafficMode = savedInstanceState?.getInt("trafficMode", 0) ?: 0
         handleShare(intent); render(); refresh()
     }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("page", page); outState.putString("selectedApp", selectedApp); outState.putInt("days", days)
         outState.putString("trafficScope", when (val scope = trafficScope) { TrafficScope.All -> "*"; TrafficScope.Unknown -> "?"; is TrafficScope.App -> scope.packageName; null -> null })
+        outState.putString("dnsReturnPage", dnsReturnPage)
+        outState.putString("trafficOutcome", trafficOutcome?.name)
         outState.putInt("trafficMode", trafficMode)
         super.onSaveInstanceState(outState)
     }
@@ -135,7 +143,8 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION")
     @Deprecated("Native activity navigation")
     override fun onBackPressed() {
-        if (page == "apps" && trafficScope != null) { trafficScope = null; render() }
+        if (page == "dns") { navigate(dnsReturnPage) }
+        else if (page == "apps" && trafficScope != null) { trafficScope = null; render() }
         else if (page != "overview") { page = "overview"; render() }
         else super.onBackPressed()
     }
@@ -166,8 +175,8 @@ class MainActivity : Activity() {
         getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(window.decorView.windowToken, 0)
         page = id; render()
     }
-    private fun showTraffic(scope: TrafficScope) {
-        trafficScope = scope; trafficQuery = ""; trafficOutcome = null; trafficMode = 0; pageLimit = PAGE_SIZE
+    private fun showTraffic(scope: TrafficScope, outcome: Outcome? = null, mode: Int = 0) {
+        trafficScope = scope; trafficQuery = ""; trafficOutcome = outcome; trafficMode = mode; pageLimit = PAGE_SIZE
         navigate("apps")
     }
     private fun render() {
@@ -181,7 +190,7 @@ class MainActivity : Activity() {
         root.addView(ScrollView(this).apply { isFillViewport = true; isVerticalScrollBarEnabled = false; addView(frame) }, LinearLayout.LayoutParams(-1, 0, 1f))
         val nav = ui.row().apply { background = ui.rounded(ui.surface, radius = 0); setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8)); elevation = ui.dp(8).toFloat() }
         listOf(Triple("overview", "Tổng quan", "overview"), Triple("apps", "Ứng dụng", "apps"), Triple("rules", "Luật", "rules"), Triple("cleaner", "Link", "link"), Triple("settings", "Cài đặt", "settings")).forEach { (id, label, icon) ->
-            val selected = page == id
+            val selected = page == id || (page == "dns" && id == "settings")
             nav.addView(ui.column().apply {
                 gravity = Gravity.CENTER; minimumHeight = ui.dp(58); setPadding(ui.dp(2), ui.dp(5), ui.dp(2), ui.dp(5))
                 background = ui.ripple(if (selected) ui.soft else android.graphics.Color.TRANSPARENT, 16)
@@ -195,7 +204,7 @@ class MainActivity : Activity() {
         setContentView(root); ui.edgeToEdge(this, root)
         when (page) { "rules" -> rulesPage(); "cleaner" -> { pageHeader("Link sạch", "Chia sẻ ít dấu vết hơn."); cleanerPage() }
             "apps" -> if (trafficScope == null) appsPage() else trafficPage(trafficScope!!)
-            "settings" -> settingsPage(); else -> overviewPage() }
+            "dns" -> dnsPage(); "settings" -> settingsPage(); else -> overviewPage() }
         ui.gap(content, 12)
     }
     private fun iconButton(icon: String, label: String, action: () -> Unit): View = ui.glyph(icon).apply {
@@ -203,16 +212,18 @@ class MainActivity : Activity() {
         setPadding(ui.dp(12), ui.dp(12), ui.dp(12), ui.dp(12)); background = ui.ripple(ui.surface, 16)
         isFocusable = true; setOnClickListener { action() }
     }
-    private fun pageHeader(title: String, subtitle: String, back: Boolean = false) {
+    private fun pageHeader(title: String, subtitle: String, back: Boolean = false, parentLabel: String = "ỨNG DỤNG", headerAction: (() -> Unit)? = null, goBack: (() -> Unit)? = null) {
         val top = ui.row()
-        if (back) top.addView(iconButton("back", "Quay lại ứng dụng") { trafficScope = null; render() }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
+        if (back) top.addView(iconButton("back", if (goBack == null) "Quay lại ứng dụng" else "Quay lại") { if (goBack != null) goBack() else { trafficScope = null; render() } }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
         else {
             top.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher); contentDescription = "PrivacyGuard" },
                 LinearLayout.LayoutParams(ui.dp(28), ui.dp(28)).apply { marginEnd = ui.dp(8) })
             top.addView(ui.text("PrivacyGuard", 13f, true, ui.muted), LinearLayout.LayoutParams(0, -2, 1f))
         }
-        if (back) top.addView(ui.text("ỨNG DỤNG", 11f, true, ui.muted).apply { letterSpacing = .08f; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(iconButton("refresh", "Làm mới") { refresh() }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
+        if (back) top.addView(ui.text(parentLabel, 11f, true, ui.muted).apply { letterSpacing = .08f; gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
+        top.addView(iconButton(if (headerAction == null) "refresh" else "plus", if (headerAction == null) "Làm mới" else "Thêm DNS tùy chỉnh") {
+            if (headerAction == null) refresh() else headerAction()
+        }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
         content.addView(top); ui.gap(content, 12)
         content.addView(ui.text(title, 32f, true).apply { maxLines = 3 })
         content.addView(ui.text(subtitle, 14f, color = ui.muted)); ui.gap(content, 20)
@@ -232,17 +243,19 @@ class MainActivity : Activity() {
             if (VpnState.status == VpnState.Status.RUNNING) startService(Intent(this, DnsVpnService::class.java).setAction(DnsVpnService.STOP)) else prepareVpn()
         }; hero.addView(toggle, LinearLayout.LayoutParams(-1, -2))
         hero.addView(ui.text("Lọc DNS trên thiết bị · không giải mã HTTPS", 11f, color = ui.muted).apply { gravity = Gravity.CENTER; setPadding(0, ui.dp(12), 0, 0) })
+        val dns = ui.group(content)
+        val dnsRow = ui.listRow(dns, "Máy chủ DNS", store.dnsSettings.active.name, "globe") { openDns() }
         ui.heading(content, "Hoạt động DNS")
         periodControl()
         val metricRow = ui.row()
         val totalText = metric(metricRow, "Tổng truy vấn", ui.ink)
-        val blockedText = metric(metricRow, "Đã chặn", ui.accent)
+        val blockedText = metric(metricRow, "Đã chặn", ui.accent) { showTraffic(TrafficScope.All, Outcome.BLOCKED, 1) }
         content.addView(metricRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(10) })
-        val secondRow = ui.row(); val forwardedText = metric(secondRow, "Chuyển tiếp", ui.green); val failedText = metric(secondRow, "Lỗi DNS", ui.orange)
+        val secondRow = ui.row(); val forwardedText = metric(secondRow, "Đã gửi", ui.green); val failedText = metric(secondRow, "Gặp lỗi", ui.orange) { showTraffic(TrafficScope.All, Outcome.FAILED, 1) }
         content.addView(secondRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
         val chartCard = ui.group(content, 16)
         val chart = TrafficChart(this, ui); chartCard.addView(chart, LinearLayout.LayoutParams(-1, ui.dp(164)))
-        val legend = ui.text("● Chặn     ● Chuyển tiếp     ● Lỗi", 11f, color = ui.muted)
+        val legend = ui.text("● Đã chặn     ● Đã gửi     ● Gặp lỗi", 11f, color = ui.muted)
         val legendText = android.text.SpannableString(legend.text)
         var dot = -1
         listOf(ui.accent, ui.green, ui.orange).forEach { color ->
@@ -260,6 +273,8 @@ class MainActivity : Activity() {
         ui.separator(shortcuts, 68)
         ui.listRow(shortcuts, "Phiên duyệt riêng tư", "Cookie riêng, xóa dữ liệu khi kết thúc", "browser") { navigate("cleaner"); content.post { browserInput?.requestFocus() } }
         refreshUi = {
+            val dnsSubtitle = (dnsRow.getChildAt(1) as LinearLayout).getChildAt(1) as TextView
+            dnsSubtitle.text = store.dnsSettings.active.name
             val running = VpnState.status == VpnState.Status.RUNNING
             state.text = when (VpnState.status) { VpnState.Status.RUNNING -> "Đang bảo vệ"; VpnState.Status.STARTING -> "Đang kết nối…"; VpnState.Status.ERROR -> "Cần kiểm tra"; else -> "Sẵn sàng bảo vệ" }
             stateDetail.text = if (running) "Bộ lọc DNS đang hoạt động" else "Bật để bắt đầu quan sát DNS"
@@ -288,15 +303,17 @@ class MainActivity : Activity() {
         }
         refreshUi()
     }
-    private fun metric(parent: LinearLayout, label: String, color: Int): TextView {
+    private fun metric(parent: LinearLayout, label: String, color: Int, tap: (() -> Unit)? = null): TextView {
         val card = ui.column(16).apply { background = ui.rounded(ui.surface, radius = 20) }
         val number = ui.text("—", 27f, true, color).apply { maxLines = 1; setAutoSizeTextTypeUniformWithConfiguration(18, 27, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }; card.addView(number); card.addView(ui.text(label, 12f, color = ui.muted))
+        if (tap != null) { card.background = ui.ripple(ui.surface, 20); card.contentDescription = "Xem yêu cầu $label"; card.isFocusable = true; card.setOnClickListener { tap() } }
         parent.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply { if (parent.childCount == 0) marginEnd = ui.dp(5) else marginStart = ui.dp(5) })
         return number
     }
     private fun appsPage() {
         pageHeader("Ứng dụng", "Từ ứng dụng đến từng tên miền.")
         periodControl()
+        val quick = ui.group(content)
         val access = ui.group(content)
         val appSearch = ui.field("Tìm ứng dụng").apply { inputType = android.text.InputType.TYPE_CLASS_TEXT; setText(appQuery); contentDescription = "Tìm ứng dụng" }
         content.addView(appSearch, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(14) })
@@ -304,6 +321,10 @@ class MainActivity : Activity() {
         val list = ui.group(content)
         val note = ui.text("", 12f, color = ui.muted); content.addView(note)
         refreshUi = {
+            quick.removeAllViews()
+            ui.listRow(quick, "Đã chặn", "${number(total(Outcome.BLOCKED))} yêu cầu · xem vì sao bị chặn", "block", ui.red) { showTraffic(TrafficScope.All, Outcome.BLOCKED, 1) }
+            ui.separator(quick, 68)
+            ui.listRow(quick, "Gặp lỗi", "${number(total(Outcome.FAILED))} yêu cầu · xem cách xử lý", "info", ui.orange) { showTraffic(TrafficScope.All, Outcome.FAILED, 1) }
             access.removeAllViews()
             ui.listRow(access, "Tất cả tên miền", if (!store.detailed) "Nhật ký đang tắt · bật để ghi tên miền" else "${Traffic.domains(Traffic.filter(events, days = days)).size} tên miền trong nhật ký", "globe") { showTraffic(TrafficScope.All) }
             ui.separator(access, 68)
@@ -333,8 +354,12 @@ class MainActivity : Activity() {
         }
     }
     private fun trafficPage(scope: TrafficScope) {
-        val title = when (scope) { TrafficScope.All -> "Tên miền"; TrafficScope.Unknown -> "Chưa xác định"; is TrafficScope.App -> appName(scope.packageName) }
-        pageHeader(title, if (scope is TrafficScope.App) scope.packageName else "Các truy vấn DNS đã quan sát.", true)
+        val title = when (scope) { TrafficScope.All -> when (trafficOutcome) { Outcome.BLOCKED -> "Đã chặn"; Outcome.FAILED -> "Gặp lỗi"; else -> "Tên miền" }; TrafficScope.Unknown -> "Chưa xác định"; is TrafficScope.App -> appName(scope.packageName) }
+        pageHeader(title, if (scope is TrafficScope.App) "Những dịch vụ ${appName(scope.packageName)} đã hỏi địa chỉ." else when (trafficOutcome) {
+            Outcome.BLOCKED -> "Những yêu cầu PrivacyGuard đã ngăn lại."
+            Outcome.FAILED -> "Những yêu cầu chưa xử lý được, cùng cách khắc phục."
+            else -> "Các truy vấn DNS đã quan sát."
+        }, true)
         periodControl()
         if (scope == TrafficScope.Unknown) {
             val info = ui.card(content, "DNS qua hệ thống", "Android chưa cung cấp app gốc cho các truy vấn này. Luật app sẽ không áp dụng; bạn có thể tạo luật toàn cục từ tên miền.")
@@ -345,10 +370,13 @@ class MainActivity : Activity() {
         val search = ui.field("Tìm tên miền, ứng dụng, nhóm").apply { inputType = android.text.InputType.TYPE_CLASS_TEXT; setText(trafficQuery); contentDescription = "Tìm tên miền" }
         content.addView(search, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
         ui.segmented(content, listOf("Tên miền", "Nhật ký"), trafficMode) { trafficMode = it; pageLimit = PAGE_SIZE; render() }
+        val outcomes = listOf(null, Outcome.BLOCKED, Outcome.FORWARDED, Outcome.FAILED)
+        ui.segmented(content, listOf("Tất cả", "Đã chặn", "Đã gửi", "Gặp lỗi"), outcomes.indexOf(trafficOutcome)) {
+            trafficOutcome = outcomes[it]; pageLimit = PAGE_SIZE; render()
+        }
         val filters = ui.row()
-        filters.addView(spinner(listOf("Tất cả trạng thái", "Đã chặn", "Chuyển tiếp", "Lỗi DNS"), when (trafficOutcome) { Outcome.BLOCKED -> 1; Outcome.FORWARDED -> 2; Outcome.FAILED -> 3; null -> 0 }) {
-            trafficOutcome = listOf(null, Outcome.BLOCKED, Outcome.FORWARDED, Outcome.FAILED)[it]; pageLimit = PAGE_SIZE; refreshUi()
-        }, LinearLayout.LayoutParams(0, -2, 1f))
+        val listTitle = ui.text("", 15f, true)
+        filters.addView(listTitle, LinearLayout.LayoutParams(0, -2, 1f))
         filters.addView(iconButton("export", "Xuất kết quả đang lọc") {
             val matching = matchingEvents(scope)
             if (matching.isEmpty()) toast("Chưa có sự kiện để xuất.")
@@ -362,26 +390,28 @@ class MainActivity : Activity() {
         if (scope is TrafficScope.App) content.addView(ui.button("Luật cho ${appName(scope.packageName)}") { selectedApp = scope.packageName; navigate("rules") })
         refreshUi = {
             val totals = counters.filter { scope.contains(it.app) }
-            summaryText.text = getString(R.string.traffic_summary, number(totals.sumOf { it.count }), number(totals.filter { it.outcome == Outcome.BLOCKED }.sumOf { it.count }))
+            summaryText.text = if (trafficOutcome == null) getString(R.string.traffic_summary, number(totals.sumOf { it.count }), number(totals.filter { it.outcome == Outcome.BLOCKED }.sumOf { it.count }))
+                else getString(R.string.outcome_summary, number(totals.filter { it.outcome == trafficOutcome }.sumOf { it.count }), trafficOutcome!!.label.lowercase(java.util.Locale.forLanguageTag("vi-VN")))
             logState.removeAllViews(); logState.visibility = if (!store.detailed) View.VISIBLE else View.GONE
             if (!store.detailed) logPrompt(logState)
             val matching = matchingEvents(scope); val domains = Traffic.domains(matching)
+            listTitle.text = resources.getQuantityString(R.plurals.filtered_requests, matching.size, matching.size)
             list.removeAllViews()
             when {
                 loading -> empty(list, "Đang đọc nhật ký…", "", "clock")
                 loadError -> empty(list, "Không đọc được nhật ký", "Chạm làm mới để thử lại.", "info")
                 !store.detailed -> empty(list, "Chưa ghi tên miền", "Bật nhật ký, sau đó bật lọc DNS và sử dụng app để ghi truy vấn mới.", "globe")
-                matching.isEmpty() -> empty(list, if (trafficQuery.isNotBlank() || trafficOutcome != null) "Không có kết quả" else "Đang chờ truy vấn mới",
+                matching.isEmpty() -> empty(list, when { trafficQuery.isNotBlank() -> "Không có kết quả"; trafficOutcome == Outcome.BLOCKED -> "Chưa có yêu cầu bị chặn"; trafficOutcome == Outcome.FAILED -> "Chưa có yêu cầu gặp lỗi"; else -> "Đang chờ truy vấn mới" },
                     if (scope is TrafficScope.App) "Nếu DNS được xử lý bởi hệ thống, hãy xem nhóm Chưa xác định ứng dụng." else "Truy vấn trước khi bật nhật ký không có tên miền để hiển thị.", "globe")
                 trafficMode == 0 -> domains.take(pageLimit).forEachIndexed { index, domain ->
                     if (index > 0) ui.separator(list, 68)
                     val tint = if (domain.count(Outcome.BLOCKED) > 0) ui.red else if (domain.count(Outcome.FAILED) > 0) ui.orange else ui.green
-                    ui.listRow(list, domain.domain, "${domain.count} lần · ${domain.count(Outcome.BLOCKED)} chặn · ${domain.count(Outcome.FORWARDED)} chuyển tiếp · ${domain.count(Outcome.FAILED)} lỗi", "globe", tint,
+                    ui.listRow(list, domain.domain, "${domain.count} lần · ${domain.count(Outcome.BLOCKED)} chặn · ${domain.count(Outcome.FORWARDED)} đã gửi · ${domain.count(Outcome.FAILED)} gặp lỗi", "globe", tint,
                         time(domain.lastSeen, "HH:mm"), oneLineTitle = true) { domainDetails(domain, scope) }
                 }
                 else -> matching.take(pageLimit).forEachIndexed { index, event ->
                     if (index > 0) ui.separator(list, 68)
-                    ui.listRow(list, event.domain, "${appName(event.app)} · ${event.outcome.label}\n${time(event.time, "dd/MM HH:mm:ss")}", "clock", outcomeColor(event.outcome), oneLineTitle = true) { domainDetails(DomainTraffic(event.domain, listOf(event)), scope) }
+                    ui.listRow(list, event.domain, "${appName(event.app)} · ${time(event.time, "dd/MM HH:mm")}\n${RequestText.forEvent(event).title}", "clock", outcomeColor(event.outcome), oneLineTitle = true) { requestDetails(event, scope) }
                 }
             }
             if (matching.isEmpty() && !loading && !loadError && trafficQuery.isBlank() && trafficOutcome == null && store.detailed) {
@@ -400,12 +430,13 @@ class MainActivity : Activity() {
         val detail = ui.column(20)
         detail.addView(ui.text(domain.domain, 22f, true).apply { setTextIsSelectable(true) })
         detail.addView(ui.text("${domain.count} sự kiện trong kết quả đang lọc", 13f, color = ui.muted))
-        detail.addView(ui.text("${domain.count(Outcome.BLOCKED)} chặn · ${domain.count(Outcome.FORWARDED)} chuyển tiếp · ${domain.count(Outcome.FAILED)} lỗi", 14f, true))
+        detail.addView(ui.text("${domain.count(Outcome.BLOCKED)} chặn · ${domain.count(Outcome.FORWARDED)} đã gửi · ${domain.count(Outcome.FAILED)} gặp lỗi", 14f, true))
         detail.addView(ui.text("Phạm vi luật: ${if (scope is TrafficScope.App) appName(scope.packageName) else "Tất cả ứng dụng"}", 14f, color = ui.accent))
         if (scope !is TrafficScope.App) detail.addView(ui.text("Luật từ màn hình này là toàn cục và ảnh hưởng mọi ứng dụng.", 13f, color = ui.orange))
         domain.events.sortedByDescending { it.time }.take(8).forEach { event ->
             ui.gap(detail, 10); detail.addView(ui.text("${time(event.time, "dd/MM HH:mm:ss")} · ${appName(event.app)}", 12f, true))
-            detail.addView(ui.text("${event.outcome.label} · ${event.category.label}\n${event.reason}", 12f, color = ui.muted))
+            detail.addView(ui.text(RequestText.forEvent(event).title, 13f, true, outcomeColor(event.outcome)))
+            detail.addView(ui.text(RequestText.forEvent(event).explanation, 12f, color = ui.muted))
         }
         AlertDialog.Builder(this).setTitle("Chi tiết tên miền").setView(ScrollView(this).apply { addView(detail) })
             .setNegativeButton("Đóng", null).setNeutralButton("Cho phép") { _, _ -> saveDomainRule(domain.domain, scope, Action.ALLOW) }
@@ -500,6 +531,9 @@ class MainActivity : Activity() {
     }
     private fun settingsPage() {
         pageHeader("Cài đặt", "Dữ liệu và quyền riêng tư của bạn.")
+        ui.heading(content, "Kết nối")
+        val connection = ui.group(content)
+        ui.listRow(connection, "Máy chủ DNS", "Đang chọn ${store.dnsSettings.active.name} · đổi hoặc thêm máy chủ", "globe") { openDns() }
         ui.heading(content, "Dữ liệu trên thiết bị")
         val privacy = ui.group(content)
         val row = ui.listRow(privacy, "Nhật ký tên miền", "Lưu truy vấn để xem theo ứng dụng", "clock")
@@ -524,13 +558,139 @@ class MainActivity : Activity() {
             showInfo("Phạm vi bảo vệ", "Lọc DNS thường (UDP/TCP) gửi đến DNS của VPN. Lưu lượng khác đi trực tiếp.\n\nKhông giải mã HTTPS; DNS mã hóa (DoH/DoT) hoặc DNS tự chọn có thể bỏ qua bộ lọc. Danh sách tên miền là truy vấn DNS, không chứng minh app đã kết nối thành công.\n\nAndroid thường xử lý DNS qua hệ thống, không cung cấp app gốc. Các truy vấn này xuất hiện trong nhóm Chưa xác định ứng dụng.")
         }
         ui.separator(about, 68)
-        ui.listRow(about, "Bộ phân giải DNS", "Quad9 · dự phòng Cloudflare", "globe") { showInfo("Bộ phân giải DNS", "Truy vấn được phép gửi tới Quad9 (9.9.9.9), dự phòng Cloudflare (1.1.1.1), qua DNS thường. Kết nối được bảo vệ khỏi vòng lặp VPN.") }
-        ui.separator(about, 68)
         ui.listRow(about, "Danh sách tracker", "Danh sách khởi đầu; chưa đầy đủ", "rules") { showInfo("Tên miền nhận diện", Rules.trackers.keys.joinToString("\n") + "\n\nTên miền dùng chung có thể ảnh hưởng chức năng thiết yếu. Bạn có thể tạo ngoại lệ để khôi phục kết nối.") }
         ui.separator(about, 68)
         ui.listRow(about, "Phiên duyệt riêng tư", "Cookie, cache và dữ liệu website riêng", "browser") { showInfo("Phiên riêng tư", "WebView có kho cookie riêng. Dữ liệu được xóa khi kết thúc và trước phiên mới. Chặn tracker bên thứ ba theo tên miền từ danh sách khởi đầu; không kiểm tra lại mọi redirect. Service worker không được truy cập mạng.\n\nTrang web và nhà mạng vẫn có thể thấy địa chỉ IP của bạn.") }
-        ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.2.0\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
+        ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.3.0\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
     }
+    private fun openDns() {
+        if (page != "dns") dnsReturnPage = page
+        navigate("dns")
+    }
+    private fun dnsPage() {
+        pageHeader("Máy chủ DNS", "Dịch vụ giúp ứng dụng tìm địa chỉ để kết nối.", true, "KẾT NỐI", headerAction = { editCustomDns() }) { navigate(dnsReturnPage) }
+        val selected = store.dnsSettings.active
+        val active = ui.card(content, "Đang chọn ${selected.name}", "Đổi máy chủ nếu kết nối chập chờn. Lựa chọn mới áp dụng cho các yêu cầu tiếp theo, không cần tắt và bật lại bảo vệ.")
+        active.addView(ui.text("DNS thường · chưa mã hóa", 12f, color = ui.muted))
+        val presets = ui.group(content)
+        val custom = ui.group(content)
+        val add = ui.button("Thêm DNS tùy chỉnh", true) { editCustomDns() }
+        content.addView(add, LinearLayout.LayoutParams(-1, -2))
+        ui.gap(content, 14)
+        content.addView(ui.text("PrivacyGuard chỉ dùng máy chủ đã chọn và địa chỉ dự phòng của chính máy chủ đó. Máy chủ có bộ lọc riêng có thể từ chối tên miền dù bạn đã cho phép trong PrivacyGuard.", 12f, color = ui.muted))
+        refreshUi = {
+            presets.removeAllViews(); custom.removeAllViews()
+            val settings = store.dnsSettings
+            settings.servers.forEach { server ->
+                val parent = if (server.custom) custom else presets
+                if (parent.childCount > 0) ui.separator(parent, 68)
+                val row = ui.listRow(parent, server.name, "${server.description}\n${server.endpoints.joinToString(" · ") { it.display }}", "globe", ui.accent,
+                    if (settings.active.id == server.id) "Đang dùng" else null) {
+                    if (!dnsSaving && settings.active.id != server.id) changeDns({ store.selectDns(server.id) }, "Đã chọn ${server.name}.")
+                }
+                row.isEnabled = !dnsSaving; row.isSelected = settings.active.id == server.id
+                if (server.custom) {
+                    row.getChildAt(row.childCount - 1).visibility = View.GONE
+                    row.addView(iconButton("settings", "Chỉnh sửa ${server.name}") {
+                        AlertDialog.Builder(this).setTitle(server.name).setItems(arrayOf("Sửa máy chủ", "Xóa máy chủ")) { _, item ->
+                            if (item == 0) editCustomDns(server) else confirmDeleteDns(server)
+                        }.show()
+                    }, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
+                }
+            }
+            custom.visibility = if (settings.custom.isEmpty()) View.GONE else View.VISIBLE
+            add.isEnabled = !dnsSaving
+        }
+        refreshUi()
+    }
+    private fun changeDns(change: () -> Unit, message: String, completed: ((Boolean) -> Unit)? = null) {
+        if (closing || dnsSaving) return
+        dnsSaving = true; refreshUi()
+        io.execute {
+            val result = runCatching(change)
+            runOnUiThread { if (!closing) {
+                dnsSaving = false
+                completed?.invoke(result.isSuccess)
+                result.onSuccess { toast(message) }.onFailure { toast(it.message ?: "Không lưu được lựa chọn. Hãy thử lại.") }
+                if (page == "dns") render() else refreshUi()
+            } }
+        }
+    }
+    private fun editCustomDns(existing: DnsServer? = null) {
+        if (dnsSaving) return
+        val form = ui.column(20)
+        form.addView(ui.text("Nhập địa chỉ IP của máy chủ riêng hoặc router. Bạn có thể để trống địa chỉ dự phòng.", 13f, color = ui.muted))
+        ui.gap(form, 12)
+        form.addView(ui.text("Tên dễ nhớ", 13f, true))
+        val name = ui.field("Ví dụ: DNS ở nhà").apply { setText(existing?.name.orEmpty()); filters = arrayOf(android.text.InputFilter.LengthFilter(40)); inputType = android.text.InputType.TYPE_CLASS_TEXT }
+        form.addView(name); ui.gap(form, 10)
+        form.addView(ui.text("Địa chỉ IP chính", 13f, true))
+        val primary = ui.field("1.1.1.1 hoặc 2606:4700:4700::1111").apply { setText(existing?.primary?.address.orEmpty()); contentDescription = "Địa chỉ IP chính" }
+        form.addView(primary); ui.gap(form, 10)
+        form.addView(ui.text("Địa chỉ dự phòng · không bắt buộc", 13f, true))
+        val secondary = ui.field("Ví dụ: 1.0.0.1").apply { setText(existing?.secondary?.address.orEmpty()); contentDescription = "Địa chỉ IP dự phòng" }
+        form.addView(secondary); ui.gap(form, 10)
+        form.addView(ui.text("Cổng · thường là 53", 13f, true))
+        val port = ui.field("53").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER; setText(String.format(java.util.Locale.ROOT, "%d", existing?.primary?.port ?: 53)); contentDescription = "Cổng DNS" }
+        form.addView(port)
+        form.addView(ui.text("Hỗ trợ DNS thường qua UDP/TCP. Chưa nhận tên máy chủ hoặc URL DNS mã hóa như https://…", 12f, color = ui.muted))
+        val error = ui.text("", 13f, color = ui.red).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }; form.addView(error)
+        val dialog = AlertDialog.Builder(this).setTitle(if (existing == null) "Thêm DNS tùy chỉnh" else "Sửa DNS tùy chỉnh")
+            .setView(ScrollView(this).apply { addView(form) }).setNegativeButton("Hủy", null).setPositiveButton("Lưu và dùng", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val validated = runCatching {
+                    val number = if (port.text.isBlank()) 53 else port.text.toString().toIntOrNull()
+                        ?: throw IllegalArgumentException("Cổng phải là số từ 1 đến 65535.")
+                    DnsServers.custom(existing?.id ?: "custom-${java.util.UUID.randomUUID()}", name.text.toString(), primary.text.toString(), secondary.text.toString(), number)
+                }
+                validated.onSuccess { server ->
+                    dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).isEnabled = false
+                    changeDns({ store.saveCustomDns(server) }, "Đã lưu và chọn ${server.name}.") { saved ->
+                        if (saved) dialog.dismiss() else {
+                            error.text = getString(R.string.dns_save_error)
+                            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                }.onFailure { error.text = it.message }
+            }
+        }
+        dialog.show()
+    }
+    private fun confirmDeleteDns(server: DnsServer) {
+        val active = store.dnsSettings.active.id == server.id
+        AlertDialog.Builder(this).setTitle("Xóa ${server.name}?")
+            .setMessage(if (active) "Máy chủ này đang được chọn. Sau khi xóa, PrivacyGuard sẽ dùng Quad9." else "Máy chủ này sẽ được gỡ khỏi danh sách tùy chỉnh.")
+            .setNegativeButton("Hủy", null).setPositiveButton("Xóa") { _, _ -> changeDns({ store.deleteCustomDns(server.id) }, "Đã xóa máy chủ.") }.show()
+    }
+    private fun requestDetails(event: GuardEvent, scope: TrafficScope) {
+        val words = RequestText.forEvent(event)
+        val detail = ui.column(20)
+        detail.addView(ui.text(words.title, 22f, true, outcomeColor(event.outcome)))
+        detail.addView(ui.text(event.domain, 18f, true).apply { setTextIsSelectable(true) })
+        detail.addView(ui.text("${appName(event.app)} · ${time(event.time, "dd/MM HH:mm")}", 13f, color = ui.muted)); ui.gap(detail, 12)
+        detail.addView(ui.text(words.explanation, 15f)); ui.gap(detail, 10)
+        detail.addView(ui.text("Bạn có thể làm gì?", 16f, true)); detail.addView(ui.text(words.suggestion, 14f, color = ui.muted))
+        if (event.outcome == Outcome.BLOCKED) {
+            ui.gap(detail, 12)
+            detail.addView(ui.text("Phạm vi luật: ${if (scope is TrafficScope.App) appName(scope.packageName) else "Tất cả ứng dụng"}", 14f, color = ui.accent))
+            if (scope !is TrafficScope.App) detail.addView(ui.text("Cho phép từ màn hình này sẽ áp dụng cho mọi ứng dụng.", 13f, color = ui.orange))
+        }
+        ui.gap(detail, 14)
+        detail.addView(ui.button("Chi tiết kỹ thuật") {
+            showInfo("Thông tin yêu cầu", "Tên miền: ${event.domain}\nỨng dụng: ${event.app ?: "Android chưa cung cấp ứng dụng gốc"}\nThời điểm: ${time(event.time, "dd/MM/yyyy HH:mm:ss")}\nNhóm: ${event.category.label}\nTrạng thái: ${event.outcome.label}\nLý do ghi nhận: ${event.reason}")
+        })
+        val builder = AlertDialog.Builder(this).setTitle(if (event.outcome == Outcome.BLOCKED) "Yêu cầu bị chặn" else if (event.outcome == Outcome.FAILED) "Yêu cầu gặp lỗi" else "Chi tiết yêu cầu")
+            .setView(ScrollView(this).apply { addView(detail) }).setNegativeButton("Đóng", null)
+        when (event.outcome) {
+            Outcome.BLOCKED -> builder.setPositiveButton("Cho phép") { _, _ -> saveDomainRule(event.domain, scope, Action.ALLOW) }
+                .setNeutralButton("Xem luật") { _, _ -> selectedApp = (scope as? TrafficScope.App)?.packageName; navigate("rules") }
+            Outcome.FAILED -> builder.setPositiveButton("Đổi máy chủ DNS") { _, _ -> openDns() }
+            Outcome.FORWARDED -> builder.setPositiveButton("Chặn") { _, _ -> saveDomainRule(event.domain, scope, Action.BLOCK) }
+        }
+        builder.show()
+    }
+
     private fun showInfo(title: String, body: String) = AlertDialog.Builder(this).setTitle(title).setMessage(body).setPositiveButton("Đóng", null).show()
     private fun requestExport(produce: () -> String) {
         io.execute {

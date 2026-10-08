@@ -167,6 +167,7 @@ private class GlyphView @JvmOverloads constructor(context: Context, private val 
             "shield" -> { val p = pathBuffer; p.reset(); p.moveTo(12f, 2f); p.lineTo(21f, 6f); p.lineTo(21f, 12f); p.cubicTo(21f, 17f, 16f, 21f, 12f, 23f); p.cubicTo(8f, 21f, 3f, 17f, 3f, 12f); p.lineTo(3f, 6f); p.close(); canvas.drawPath(p, paint); path(8f, 12f, 11f, 15f, 16f, 9f) }
             "globe", "browser" -> { canvas.drawCircle(12f, 12f, 9f, paint); canvas.drawOval(8f, 3f, 16f, 21f, paint); line(3f, 12f, 21f, 12f); if (name == "browser") line(6f, 6f, 18f, 6f) }
             "back" -> { path(14f, 5f, 7f, 12f, 14f, 19f); line(7f, 12f, 21f, 12f) }
+            "plus" -> { line(12f, 4f, 12f, 20f); line(4f, 12f, 20f, 12f) }
             "chevron" -> path(9f, 6f, 15f, 12f, 9f, 18f)
             "refresh" -> { canvas.drawArc(4f, 4f, 20f, 20f, 35f, 295f, false, paint); path(21f, 5f, 20f, 11f, 14f, 10f) }
             "export" -> { box(4f, 11f, 20f, 22f); line(12f, 16f, 12f, 2f); path(7f, 7f, 12f, 2f, 17f, 7f) }

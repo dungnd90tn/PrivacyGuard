@@ -152,7 +152,7 @@ class NativeUiTest {
         click("ads.example.com")
         val dialog = ShadowAlertDialog.getLatestAlertDialog()
         assertTrue(texts(dialog.window!!.decorView).any { it.contains("Phạm vi luật: Tất cả ứng dụng") })
-        dialog.getButton(android.content.DialogInterface.BUTTON_NEUTRAL).performClick(); idle()
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
         ShadowAlertDialog.getLatestAlertDialog().getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
         GuardStore(context).use { store ->
             assertEquals("*", store.policy.exceptions.single().app)
@@ -210,6 +210,146 @@ class NativeUiTest {
         click("Tất cả tên miền"); assertTrue(texts().contains("Đang chờ truy vấn mới")); assertTrue(texts().contains("Bật lọc DNS"))
         capture("domains-empty", 390, 844)
     }
+    @Test fun dnsSelectionPersistsAndSettingsExportIncludesOnlyThatProfileChoice() {
+        fixture(); click("Cài đặt"); click("Máy chủ DNS"); click("Cloudflare")
+        await { texts().contains("Đang chọn Cloudflare") }
+        GuardStore(context).use { store ->
+            assertEquals("cloudflare", store.dnsSettings.active.id)
+            assertEquals(listOf("1.1.1.1", "1.0.0.1"), store.dnsSettings.active.endpoints.map { it.address })
+            assertEquals("cloudflare", org.json.JSONObject(store.export()).getJSONObject("dnsSettings").getString("selected"))
+        }
+        capture("dns-presets", 390, 844)
+        controller!!.get().recreate(); idle()
+        assertTrue(texts().contains("Đang chọn Cloudflare"))
+        assertEquals(VpnState.Status.STOPPED, VpnState.status) // Choosing a resolver never starts VPN by itself.
+    }
+    @Test fun customDnsFormRejectsInvalidAddressesAndPersistsIpv6BackupAndPort() {
+        fixture(); click("Cài đặt"); click("Máy chủ DNS"); click("Thêm DNS tùy chỉnh")
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        val fields = views(dialog.window!!.decorView).filterIsInstance<EditText>()
+        fields[0].setText("DNS ở nhà"); fields[1].setText("https://dns.example.com/dns-query")
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
+        assertTrue(dialog.isShowing); assertTrue(texts(dialog.window!!.decorView).any { it.contains("Nhập địa chỉ IP") })
+        GuardStore(context).use { assertTrue(it.dnsSettings.custom.isEmpty()) }
+        fields[1].setText("192.168.1.1"); fields[2].setText("2001:db8::53"); fields[3].setText("65536")
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
+        assertTrue(dialog.isShowing); assertTrue(texts(dialog.window!!.decorView).any { it.contains("65535") })
+        fields[3].setText("5353"); dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        await { texts().contains("Đang chọn DNS ở nhà") }
+        GuardStore(context).use { store ->
+            assertEquals(5353, store.dnsSettings.active.primary.port)
+            assertEquals(16, store.dnsSettings.active.secondary!!.bytes.size)
+            assertEquals(1, store.dnsSettings.custom.size)
+        }
+        capture("dns-custom", 390, 844)
+        click("Chỉnh sửa DNS ở nhà")
+        ShadowAlertDialog.getLatestAlertDialog().listView.performItemClick(null, 0, 0); idle()
+        val edit = ShadowAlertDialog.getLatestAlertDialog()
+        val editing = views(edit.window!!.decorView).filterIsInstance<EditText>()
+        editing[0].setText("DNS riêng"); editing[1].setText("192.168.1.2")
+        edit.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        await { texts().contains("Đang chọn DNS riêng") }
+        GuardStore(context).use { assertEquals(1, it.dnsSettings.custom.size); assertEquals("192.168.1.2", it.dnsSettings.active.primary.address) }
+        click("Chỉnh sửa DNS riêng")
+        ShadowAlertDialog.getLatestAlertDialog().listView.performItemClick(null, 1, 1); idle()
+        val confirm = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(texts(confirm.window!!.decorView).any { it.contains("sẽ dùng Quad9") })
+        confirm.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        await { texts().contains("Đang chọn Quad9") }
+        GuardStore(context).use { assertTrue(it.dnsSettings.custom.isEmpty()); assertEquals("quad9", it.dnsSettings.active.id) }
+    }
+    @Test fun blockedAndFailedShortcutsShowSeparateListsWithPlainLanguageDetails() {
+        fixture(); click("Xem yêu cầu Đã chặn")
+        assertTrue(texts().contains("Đã chặn")); assertTrue(texts().any { it.contains("Quảng cáo đã bị chặn") || it.contains("Yêu cầu theo dõi đã bị chặn") })
+        assertTrue(texts().none { it.contains("Chưa nhận được câu trả lời") })
+        capture("blocked-requests", 390, 844)
+        click("Gặp lỗi")
+        assertTrue(texts().any { it.contains("Chưa nhận được câu trả lời") })
+        assertTrue(texts().none { it.contains("Quảng cáo đã bị chặn") || it.contains("Yêu cầu theo dõi đã bị chặn") })
+        capture("failed-requests", 390, 844)
+        click("ads.example.com")
+        val detail = ShadowAlertDialog.getLatestAlertDialog()
+        val visible = texts(detail.window!!.decorView)
+        assertTrue(visible.any { it.contains("Đây không phải một yêu cầu bị PrivacyGuard chặn") })
+        assertTrue(visible.contains("Bạn có thể làm gì?")); assertTrue(visible.none { it.contains("Resolver trả lỗi") })
+        captureDialog("failed-request-help", detail)
+        detail.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
+        assertTrue(texts().contains("Máy chủ DNS"))
+        click("Quay lại"); assertTrue(texts().contains("Gặp lỗi"))
+    }
+    @Test fun blockedRequestExplainsScopeAndAllowsOnlyTheAppWhereItWasObserved() {
+        fixture(); click("Ứng dụng"); click("Chrome"); click("Nhật ký"); click("Đã chặn")
+        assertTrue(texts().none { it.startsWith("Zalo ·") || it.startsWith("Instagram ·") })
+        click("ads.example.com")
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(texts(dialog.window!!.decorView).any { it.contains("Yêu cầu không được gửi tới máy chủ DNS") })
+        assertTrue(texts(dialog.window!!.decorView).contains("Phạm vi luật: Chrome"))
+        captureDialog("blocked-request-help", dialog)
+        dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
+        ShadowAlertDialog.getLatestAlertDialog().getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick(); idle()
+        GuardStore(context).use { store ->
+            assertEquals(chrome, store.policy.exceptions.single().app)
+            assertEquals(Action.ALLOW, Rules.decide("ads.example.com", chrome, store.policy).action)
+            assertEquals(Action.BLOCK, Rules.decide("ads.example.com", zalo, store.policy).action)
+        }
+    }
+    @Test fun allServerErrorsUseReadableReasonsAndRawCodesRequireOpeningTechnicalDetails() {
+        fixture()
+        // Replace one fixture's reason with a real upstream failure reason.
+        context.openOrCreateDatabase("history.db", 0, null).use { db ->
+            db.execSQL("UPDATE events SET reason='Resolver trả lỗi DNS (mã 5)' WHERE outcome='FAILED'")
+        }
+        click("Làm mới"); click("Xem yêu cầu Gặp lỗi")
+        await { texts().any { it.contains("Máy chủ DNS không nhận yêu cầu") } }
+        click("ads.example.com")
+        val dialog = ShadowAlertDialog.getLatestAlertDialog()
+        assertTrue(texts(dialog.window!!.decorView).any { it.contains("đã từ chối") })
+        assertTrue(texts(dialog.window!!.decorView).none { it.contains("mã 5") })
+        val button = views(dialog.window!!.decorView).filterIsInstance<TextView>().first { it.text.toString() == "Chi tiết kỹ thuật" }
+        button.performClick(); idle()
+        assertTrue(texts(ShadowAlertDialog.getLatestAlertDialog().window!!.decorView).any { it.contains("mã 5") })
+    }
+    @Test fun dnsAndRequestScreensRenderInDarkModeAndWithLargeText() {
+        fixture("w390dp-h844dp-port-night-mdpi", fontScale = 1.3f)
+        click("Cài đặt"); click("Máy chủ DNS"); capture("dns-presets-dark-large", 390, 844)
+        click("Thêm DNS tùy chỉnh")
+        captureDialog("dns-editor-dark-large", ShadowAlertDialog.getLatestAlertDialog())
+        ShadowAlertDialog.getLatestAlertDialog().getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick(); idle()
+        click("Ứng dụng"); click("Gặp lỗi"); capture("failed-requests-dark-large", 390, 844)
+        click("ads.example.com"); captureDialog("failed-help-dark-large", ShadowAlertDialog.getLatestAlertDialog())
+        val add = views(controller!!.get().window.decorView).firstOrNull { it.contentDescription?.toString() == "Thêm DNS tùy chỉnh" }
+        assertNull(add) // Request screen has its own actions, not the DNS editor button.
+    }
+    @Test fun customProfileLimitDoesNotChangeTheActiveChoiceAndClearHistoryPreservesDns() {
+        fixture()
+        GuardStore(context).use { store ->
+            for (i in 0 until 20) store.saveCustomDns(com.privacyguard.android.core.DnsServers.custom("custom-$i", "DNS $i", "192.168.1.1"), select = false)
+            store.selectDns("cloudflare")
+            assertThrows(IllegalArgumentException::class.java) { store.saveCustomDns(com.privacyguard.android.core.DnsServers.custom("custom-overflow", "Too many", "192.168.1.2")) }
+            assertEquals("cloudflare", store.dnsSettings.active.id)
+            assertEquals(20, store.dnsSettings.custom.size)
+            store.clearHistory()
+            assertEquals("cloudflare", store.dnsSettings.active.id); assertEquals(20, store.dnsSettings.custom.size)
+            assertTrue(store.events().isEmpty()); assertTrue(store.counters().isEmpty())
+        }
+    }
+
+    private fun captureDialog(name: String, dialog: android.app.AlertDialog) {
+        val width = 390; val height = 844
+        val bitmap = Bitmap.createBitmap(width, height + 24, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val activity = controller!!.get().window.decorView
+        activity.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)); activity.layout(0, 0, width, height); activity.draw(canvas)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), Paint().apply { color = Color.argb(110, 0, 0, 0) })
+        val decor = dialog.window!!.decorView
+        decor.forceLayout(); decor.measure(View.MeasureSpec.makeMeasureSpec(width - 32, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height - 80, View.MeasureSpec.AT_MOST))
+        decor.layout(0, 0, decor.measuredWidth, decor.measuredHeight)
+        canvas.save(); canvas.translate(16f, (height - decor.measuredHeight) / 2f); decor.draw(canvas); canvas.restore()
+        canvas.drawRect(0f, height.toFloat(), width.toFloat(), height + 24f, Paint().apply { color = Color.WHITE })
+        canvas.drawText("NATIVE ANDROID UI · TEST FIXTURE DATA · SDK 35", 8f, height + 15f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(70, 78, 90); textSize = 10f })
+        File("build/ui-previews").apply { mkdirs() }.resolve("$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
+    }
+
     private fun capture(name: String, width: Int, height: Int) {
         val decor = controller!!.get().window.decorView
         decor.forceLayout(); decor.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)); decor.layout(0, 0, width, height)
