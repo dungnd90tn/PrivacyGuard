@@ -5,12 +5,14 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.VpnService
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -150,6 +152,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         if (page == "dns") { navigate(dnsReturnPage) }
         else if (page == "apps" && trafficScope != null) { trafficScope = null; render() }
+        else if (page == "notifications") { navigate("settings") }
         else if (page != "overview") { page = "overview"; render() }
         else super.onBackPressed()
     }
@@ -210,7 +213,7 @@ class MainActivity : Activity() {
         setContentView(root); ui.edgeToEdge(this, root)
         when (page) { "rules" -> rulesPage(); "cleaner" -> { pageHeader("Link sạch", "Chia sẻ ít dấu vết hơn."); cleanerPage() }
             "apps" -> if (trafficScope == null) appsPage() else trafficPage(trafficScope!!)
-            "dns" -> dnsPage(); "settings" -> settingsPage(); else -> overviewPage() }
+            "dns" -> dnsPage(); "notifications" -> notificationPage(); "settings" -> settingsPage(); else -> overviewPage() }
         ui.gap(content, 12)
     }
     private fun iconButton(icon: String, label: String, action: () -> Unit): View = ui.glyph(icon).apply {
@@ -538,6 +541,9 @@ class MainActivity : Activity() {
     }
     private fun settingsPage() {
         pageHeader("Cài đặt", "Dữ liệu và quyền riêng tư của bạn.")
+        ui.heading(content, "Thông báo")
+        val notificationGroup = ui.group(content)
+        ui.listRow(notificationGroup, "Lọc thông báo", "Chặn theo ứng dụng và từ khóa · không cần VPN", "shield") { navigate("notifications") }
         ui.heading(content, "Kết nối")
         val connection = ui.group(content)
         ui.listRow(connection, "Máy chủ DNS", dnsLabel() + " · đổi hoặc thêm máy chủ", "globe") { openDns() }
@@ -569,6 +575,63 @@ class MainActivity : Activity() {
         ui.separator(about, 68)
         ui.listRow(about, "Phiên duyệt riêng tư", "Cookie, cache và dữ liệu website riêng", "browser") { showInfo("Phiên riêng tư", "WebView có kho cookie riêng. Dữ liệu được xóa khi kết thúc và trước phiên mới. Chặn tracker bên thứ ba theo tên miền từ danh sách khởi đầu; không kiểm tra lại mọi redirect. Service worker không được truy cập mạng.\n\nTrang web và nhà mạng vẫn có thể thấy địa chỉ IP của bạn.") }
         ui.gap(content, 20); content.addView(ui.text("PrivacyGuard 0.4.1\nKhông tài khoản · không telemetry", 12f, color = ui.muted).apply { gravity = Gravity.CENTER })
+    }
+    private fun notificationPage() {
+        pageHeader("Lọc thông báo", "Lọc thông báo trên thanh trạng thái theo từ khóa và ứng dụng.", true, "CÀI ĐẶT", goBack = { navigate("settings") })
+        val access = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+            .orEmpty().split(':').mapNotNull(ComponentName::unflattenFromString)
+            .any { it.packageName == packageName && it.className == NotificationFilterService::class.java.name }
+        val accessGroup = ui.group(content)
+        ui.listRow(accessGroup, "Quyền truy cập thông báo", if (access) "Đã cấp quyền" else "Chưa cấp quyền · chạm để mở cài đặt Android", "shield") {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+        val enabledRow = ui.listRow(accessGroup, "Bật lọc thông báo", "Chỉ hủy thông báo khớp luật; không lưu nội dung", "rules")
+        enabledRow.addView(Switch(this).apply {
+            contentDescription = "Bật lọc thông báo"
+            isChecked = NotificationRules.enabled(this@MainActivity)
+            setOnCheckedChangeListener { _, checked ->
+                NotificationRules.setEnabled(this@MainActivity, checked)
+                if (checked && !access) toast("Hãy cấp quyền truy cập thông báo trong cài đặt Android.")
+            }
+        })
+        content.addView(ui.text("Thông báo có thể hiện hoặc phát âm thanh trong giây lát trước khi được hủy. Android có thể ẩn nội dung nhạy cảm khỏi bộ lọc.", 12f, color = ui.muted))
+
+        ui.heading(content, "Thêm luật chặn")
+        val installed = apps.filter { it.id != packageName }.sortedBy { it.name }
+        val appChoices = listOf("Tất cả ứng dụng") + installed.map { "${it.name} (${it.id})" }
+        val appSelector = spinner(appChoices)
+        content.addView(appSelector)
+        val keyword = EditText(this).apply {
+            hint = "Từ khóa trong tiêu đề hoặc nội dung"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            maxLines = 1
+            filters = arrayOf(android.text.InputFilter.LengthFilter(120))
+        }
+        content.addView(keyword)
+        content.addView(ui.button("Thêm luật") {
+            val text = keyword.text.toString().trim()
+            if (text.isEmpty() || text.contains('|')) {
+                toast("Nhập từ khóa hợp lệ (không dùng ký tự |).")
+            } else {
+                val target = if (appSelector.selectedItemPosition == 0) "*" else installed[appSelector.selectedItemPosition - 1].id
+                NotificationRules.add(this, NotificationRule(target, text))
+                render()
+            }
+        })
+        ui.heading(content, "Luật hiện có")
+        val rulesGroup = ui.group(content)
+        val rules = NotificationRules.load(this)
+        if (rules.isEmpty()) rulesGroup.addView(ui.text("Chưa có luật nào.", 14f, color = ui.muted))
+        rules.forEachIndexed { index, rule ->
+            if (index > 0) ui.separator(rulesGroup, 68)
+            val target = if (rule.packageName == "*") "Tất cả ứng dụng" else installed.firstOrNull { it.id == rule.packageName }?.name ?: rule.packageName
+            ui.listRow(rulesGroup, rule.keyword, target, "rules") {
+                AlertDialog.Builder(this).setTitle("Xóa luật chặn?")
+                    .setMessage("${rule.keyword} · $target")
+                    .setNegativeButton("Hủy", null)
+                    .setPositiveButton("Xóa") { _, _ -> NotificationRules.remove(this, rule); render() }.show()
+            }
+        }
     }
     private fun openDns() {
         if (page != "dns") dnsReturnPage = page
