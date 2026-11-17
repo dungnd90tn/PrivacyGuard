@@ -12,9 +12,9 @@ class NotificationFilterService : NotificationListenerService() {
         val extras = sbn.notification.extras
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
         val body = buildString {
-            append(extras.getCharSequence(Notification.EXTRA_TEXT).orEmpty())
+            append(extras.getCharSequence(Notification.EXTRA_TEXT) ?: "")
             append(' ')
-            append(extras.getCharSequence(Notification.EXTRA_BIG_TEXT).orEmpty())
+            append(extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: "")
             extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.forEach { append(' '); append(it) }
         }
         if (NotificationRules.shouldBlock(sbn.packageName, title, body, rules)) {
